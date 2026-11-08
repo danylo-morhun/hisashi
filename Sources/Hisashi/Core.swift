@@ -139,12 +139,10 @@ enum Layout {
         }
     }
 
-    static func bottomRadius(_ mode: NotchMode) -> CGFloat {
-        switch mode {
-        case .compact: return 10
-        case .event: return 20
-        case .open: return 24
-        }
+    /// Corner radius follows the height, so it eases along with the size.
+    static func bottomRadius(height: CGFloat, notch: CGSize) -> CGFloat {
+        let t = min(1, max(0, (height - notch.height) / openBody))
+        return 10 + 14 * t
     }
 
     static func windowSize(notch: CGSize) -> CGSize {
