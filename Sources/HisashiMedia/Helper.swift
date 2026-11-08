@@ -20,11 +20,14 @@ final class Remote {
     private typealias InitPath = @convention(c) (AnyObject, Selector, AnyObject?, AnyObject?, AnyObject?) -> Unmanaged<NSObject>?
     private typealias InitRequest = @convention(c) (AnyObject, Selector, AnyObject?) -> Unmanaged<NSObject>?
     private typealias RequestInfo = @convention(c) (AnyObject, Selector, DispatchQueue, @escaping @convention(block) (NSDictionary?, NSError?) -> Void) -> Void
-    private typealias ResolvePath = @convention(c) (AnyObject, Selector, DispatchQueue, @escaping @convention(block) (AnyObject?, NSError?) -> Void) -> Void
-    private typealias SendToPlayer = @convention(c) (UInt32, NSDictionary?, AnyObject, UInt32, DispatchQueue, @escaping @convention(block) (AnyObject?) -> Void) -> Void
+    private typealias EnableOverride = @convention(c) (Bool) -> Void
+    private typealias SetOverride = @convention(c) (CFString?) -> Void
+    private typealias SendCommand = @convention(c) (UInt32, CFDictionary?) -> Bool
 
     private let getClients: GetClients
-    private let sendToPlayer: SendToPlayer
+    private let enableOverride: EnableOverride
+    private let setOverride: SetOverride
+    private let sendCommand: SendCommand
     private let pathClass: AnyClass
     private let requestClass: AnyClass
     private let origin: AnyObject?
@@ -32,13 +35,17 @@ final class Remote {
     init?() {
         guard let lib = dlopen("/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote", RTLD_NOW),
               let sym = dlsym(lib, "MRMediaRemoteGetNowPlayingClients"),
-              let sendSym = dlsym(lib, "MRMediaRemoteSendCommandToPlayer"),
+              let enableSym = dlsym(lib, "MRMediaRemoteSetNowPlayingApplicationOverrideEnabled"),
+              let overrideSym = dlsym(lib, "MRMediaRemoteSetOverriddenNowPlayingApplication"),
+              let sendSym = dlsym(lib, "MRMediaRemoteSendCommand"),
               let pathClass = NSClassFromString("MRPlayerPath"),
               let requestClass = NSClassFromString("MRNowPlayingRequest"),
               let originClass = NSClassFromString("MROrigin") as? NSObject.Type
         else { return nil }
         getClients = unsafeBitCast(sym, to: GetClients.self)
-        sendToPlayer = unsafeBitCast(sendSym, to: SendToPlayer.self)
+        enableOverride = unsafeBitCast(enableSym, to: EnableOverride.self)
+        setOverride = unsafeBitCast(overrideSym, to: SetOverride.self)
+        sendCommand = unsafeBitCast(sendSym, to: SendCommand.self)
         self.pathClass = pathClass
         self.requestClass = requestClass
         origin = originClass.perform(NSSelectorFromString("localOrigin"))?.takeUnretainedValue()
@@ -63,14 +70,18 @@ final class Remote {
         call(request, sel, queue) { info, _ in done(info as? [String: Any]) }
     }
 
-    /// The request's own sendCommand goes to the system's active player,
-    /// so resolve this player's full path and address the command to it.
-    func send(_ command: UInt32, to request: NSObject, on queue: DispatchQueue) {
-        let sel = NSSelectorFromString("nowPlayingPlayerPathOnQueue:completion:")
-        let resolve = unsafeBitCast(class_getMethodImplementation(requestClass, sel), to: ResolvePath.self)
-        resolve(request, sel, queue) { [sendToPlayer] path, _ in
-            guard let path else { return }
-            sendToPlayer(command, nil, path, 0, queue) { _ in }
+    /// Commands only reach the system's active player, so the target app is
+    /// briefly made the active one, sent the command, then released.
+    func send(_ command: UInt32, to app: String, on queue: DispatchQueue, done: @escaping () -> Void) {
+        enableOverride(true)
+        setOverride(app as CFString)
+        queue.asyncAfter(deadline: .now() + 0.15) { [self] in
+            _ = sendCommand(command, nil)
+            queue.asyncAfter(deadline: .now() + 0.4) { [self] in
+                setOverride(nil)
+                enableOverride(false)
+                done()
+            }
         }
     }
 
@@ -169,10 +180,10 @@ final class Service {
             guard let data = line.data(using: .utf8),
                   let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let cmd = obj["cmd"] as? Int, let app = obj["app"] as? String else { continue }
-            queue.async {
-                guard let request = self.requests[app]?.request else { return }
-                self.remote.send(UInt32(cmd), to: request, on: self.queue)
-            }
+            // One command at a time, so overrides never overlap.
+            let finished = DispatchSemaphore(value: 0)
+            queue.async { self.remote.send(UInt32(cmd), to: app, on: self.queue) { finished.signal() } }
+            finished.wait()
         }
         exit(0) // stdin closed: the app is gone.
     }
