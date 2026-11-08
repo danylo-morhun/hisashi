@@ -9,10 +9,13 @@ swift build -c "$config"
 app="build/Hisashi.app"
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS"
+mkdir -p "$app/Contents/Frameworks"
 cp ".build/$config/Hisashi" "$app/Contents/MacOS/Hisashi"
+cp ".build/$config/libHisashiMedia.dylib" "$app/Contents/Frameworks/"
 cp Resources/Info.plist "$app/Contents/Info.plist"
 # Sign with the local dev identity when present (scripts/dev-cert.sh), else ad-hoc.
 identity="-"
 security find-certificate -c "Hisashi Dev" >/dev/null 2>&1 && identity="Hisashi Dev"
+codesign --force --sign "$identity" "$app/Contents/Frameworks/libHisashiMedia.dylib" >/dev/null
 codesign --force --sign "$identity" "$app" >/dev/null
 echo "$app"
