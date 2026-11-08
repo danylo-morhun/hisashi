@@ -104,7 +104,7 @@ struct OpenPanel: View {
     let model: NotchModel
 
     var body: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 10) {
             // Top row lives in the "ears" left and right of the camera.
             HStack(spacing: 0) {
                 TabBar(selected: model.state.tab) { model.send(.select($0)) }
@@ -117,8 +117,8 @@ struct OpenPanel: View {
             TabPane(tab: model.state.tab)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .padding(.horizontal, 22)
-        .padding(.bottom, 20)
+        .padding(.horizontal, 16)
+        .padding(.bottom, 16)
     }
 }
 
@@ -127,7 +127,7 @@ struct TabBar: View {
     let pick: (Tab) -> Void
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 2) {
             ForEach(Tab.allCases, id: \.self) { tab in
                 IconButton(symbol: tab.symbol, label: tab.title, isOn: tab == selected) { pick(tab) }
             }
@@ -145,10 +145,10 @@ struct IconButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 13, weight: .medium))
-                .frame(width: 36, height: 28)
+                .font(.system(size: 12, weight: .medium))
+                .frame(width: 32, height: 26)
                 .foregroundStyle(isOn ? Theme.ink : Theme.muted)
-                .background(RoundedRectangle(cornerRadius: 9).fill(isOn ? Theme.raised : (isHovered ? Theme.surface : .clear)))
+                .background(RoundedRectangle(cornerRadius: 8).fill(isOn ? Theme.raised : (isHovered ? Theme.surface : .clear)))
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -162,7 +162,7 @@ struct TabPane: View {
     let tab: Tab
 
     var body: some View {
-        RoundedRectangle(cornerRadius: 16)
+        RoundedRectangle(cornerRadius: 14)
             .fill(Theme.surface)
             .overlay {
                 VStack(spacing: 6) {
