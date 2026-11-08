@@ -11,5 +11,8 @@ rm -rf "$app"
 mkdir -p "$app/Contents/MacOS"
 cp ".build/$config/Hisashi" "$app/Contents/MacOS/Hisashi"
 cp Resources/Info.plist "$app/Contents/Info.plist"
-codesign --force --sign - "$app" >/dev/null
+# Sign with the local dev identity when present (scripts/dev-cert.sh), else ad-hoc.
+identity="-"
+security find-certificate -c "Hisashi Dev" >/dev/null 2>&1 && identity="Hisashi Dev"
+codesign --force --sign "$identity" "$app" >/dev/null
 echo "$app"
