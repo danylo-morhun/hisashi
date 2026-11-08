@@ -9,6 +9,7 @@ final class NotchModel {
     /// Set by the shell; sends a command to the active player.
     var sendMedia: (MediaCommand, NowPlaying) -> Void = { _, _ in }
     private var dismissTask: Task<Void, Never>?
+    private var hudTask: Task<Void, Never>?
 
     init(notch: CGSize) {
         self.notch = notch
@@ -18,6 +19,7 @@ final class NotchModel {
         let next = reduce(state, action)
         if next != state { state = next }
         if case .show = action { scheduleDismiss() }
+        if case .showHud = action { scheduleHudDismiss() }
     }
 
     /// Sends a command to the shown player.
@@ -27,6 +29,16 @@ final class NotchModel {
         let explicit: MediaCommand = command == .toggle ? (np.isPlaying ? .pause : .play) : command
         if command == .toggle { send(.togglePlayback(at: Date())) }
         sendMedia(explicit, np)
+    }
+
+    /// Each key press restarts the timer, so holding a key keeps the HUD up.
+    private func scheduleHudDismiss() {
+        hudTask?.cancel()
+        hudTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(1.5))
+            guard !Task.isCancelled else { return }
+            self?.send(.dismissHud)
+        }
     }
 
     private func scheduleDismiss() {
