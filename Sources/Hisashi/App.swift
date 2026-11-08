@@ -35,6 +35,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         keys?.start()
         // Dev aid: `open build/Hisashi.app --args --pinned` starts open.
         if CommandLine.arguments.contains("--pinned") { model?.send(.togglePin) }
+        // Dev aid: `--hud volume|brightness 0.5` shows the HUD at that level.
+        if let i = CommandLine.arguments.firstIndex(of: "--hud"), CommandLine.arguments.count > i + 2,
+           let level = Float(CommandLine.arguments[i + 2]) {
+            let kind: Hud.Kind = CommandLine.arguments[i + 1] == "brightness" ? .brightness : .volume
+            // Re-sent for five seconds so it stays up long enough to look at.
+            for tick in 0..<10 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5 * Double(tick)) { [weak self] in
+                    self?.model?.send(.showHud(Hud(kind: kind, level: level)))
+                }
+            }
+        }
         monitors = MouseMonitors.install(onMove: { [weak self] in self?.mouseMoved($0) },
                                          onOutsideClick: { [weak self] in self?.model?.send(.unpin) })
         NotificationCenter.default.addObserver(self, selector: #selector(screensChanged),
