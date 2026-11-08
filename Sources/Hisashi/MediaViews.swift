@@ -246,25 +246,19 @@ enum AppIcon {
     }
 }
 
+/// Four bars driven by the real sound, see AudioTap. Flat while paused.
 struct Equalizer: View {
     let isPlaying: Bool
-    private static let speeds: [Double] = [5.1, 7.3, 4.2, 6.4]
-    private static let phases: [Double] = [0, 1.7, 3.1, 0.9]
+    @Environment(AudioLevels.self) private var levels
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 30, paused: !isPlaying)) { context in
-            let t = context.date.timeIntervalSinceReferenceDate
-            HStack(spacing: 2) {
-                ForEach(0..<4, id: \.self) { i in
-                    Capsule().frame(width: 3, height: isPlaying ? Self.height(t, i) : 3)
-                }
+        HStack(spacing: 2) {
+            ForEach(0..<4, id: \.self) { i in
+                Capsule().frame(width: 3, height: isPlaying ? 3 + 9 * CGFloat(levels.values[i]) : 3)
             }
-            .frame(height: 12)
         }
-    }
-
-    static func height(_ t: Double, _ i: Int) -> CGFloat {
-        CGFloat(3 + 9 * (0.5 + 0.5 * sin(t * speeds[i] + phases[i])))
+        .frame(height: 12)
+        .animation(.linear(duration: 0.06), value: levels.values)
     }
 }
 
