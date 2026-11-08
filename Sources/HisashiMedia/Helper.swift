@@ -20,9 +20,11 @@ final class Remote {
     private typealias InitPath = @convention(c) (AnyObject, Selector, AnyObject?, AnyObject?, AnyObject?) -> Unmanaged<NSObject>?
     private typealias InitRequest = @convention(c) (AnyObject, Selector, AnyObject?) -> Unmanaged<NSObject>?
     private typealias RequestInfo = @convention(c) (AnyObject, Selector, DispatchQueue, @escaping @convention(block) (NSDictionary?, NSError?) -> Void) -> Void
-    private typealias SendCommand = @convention(c) (AnyObject, Selector, UInt32, NSDictionary?, DispatchQueue, @escaping @convention(block) (AnyObject?) -> Void) -> Void
+    private typealias ResolvePath = @convention(c) (AnyObject, Selector, DispatchQueue, @escaping @convention(block) (AnyObject?, NSError?) -> Void) -> Void
+    private typealias SendToPlayer = @convention(c) (UInt32, NSDictionary?, AnyObject, UInt32, DispatchQueue, @escaping @convention(block) (AnyObject?) -> Void) -> Void
 
     private let getClients: GetClients
+    private let sendToPlayer: SendToPlayer
     private let pathClass: AnyClass
     private let requestClass: AnyClass
     private let origin: AnyObject?
@@ -30,11 +32,13 @@ final class Remote {
     init?() {
         guard let lib = dlopen("/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote", RTLD_NOW),
               let sym = dlsym(lib, "MRMediaRemoteGetNowPlayingClients"),
+              let sendSym = dlsym(lib, "MRMediaRemoteSendCommandToPlayer"),
               let pathClass = NSClassFromString("MRPlayerPath"),
               let requestClass = NSClassFromString("MRNowPlayingRequest"),
               let originClass = NSClassFromString("MROrigin") as? NSObject.Type
         else { return nil }
         getClients = unsafeBitCast(sym, to: GetClients.self)
+        sendToPlayer = unsafeBitCast(sendSym, to: SendToPlayer.self)
         self.pathClass = pathClass
         self.requestClass = requestClass
         origin = originClass.perform(NSSelectorFromString("localOrigin"))?.takeUnretainedValue()
@@ -59,10 +63,15 @@ final class Remote {
         call(request, sel, queue) { info, _ in done(info as? [String: Any]) }
     }
 
+    /// The request's own sendCommand goes to the system's active player,
+    /// so resolve this player's full path and address the command to it.
     func send(_ command: UInt32, to request: NSObject, on queue: DispatchQueue) {
-        let sel = NSSelectorFromString("sendCommand:options:queue:completion:")
-        let call = unsafeBitCast(class_getMethodImplementation(requestClass, sel), to: SendCommand.self)
-        call(request, sel, command, nil, queue) { _ in }
+        let sel = NSSelectorFromString("nowPlayingPlayerPathOnQueue:completion:")
+        let resolve = unsafeBitCast(class_getMethodImplementation(requestClass, sel), to: ResolvePath.self)
+        resolve(request, sel, queue) { [sendToPlayer] path, _ in
+            guard let path else { return }
+            sendToPlayer(command, nil, path, 0, queue) { _ in }
+        }
     }
 
     private func alloc(_ cls: AnyClass) -> AnyObject {
