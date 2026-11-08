@@ -1,5 +1,4 @@
 import Foundation
-import AppKit
 
 // Now playing comes from the HisashiMedia helper, hosted in /usr/bin/perl
 // because MediaRemote answers only Apple-signed processes. See Sources/HisashiMedia.
@@ -58,15 +57,7 @@ final class MediaBridge {
         process?.terminate()
     }
 
-    /// MediaRemote only obeys the system's active player. Spotify and Music
-    /// take AppleScript at any time, so they get that instead.
     func send(_ command: MediaCommand, to app: String) {
-        if let source = PlayerScript.source(app: app, command: command) {
-            DispatchQueue.global(qos: .userInitiated).async {
-                NSAppleScript(source: source)?.executeAndReturnError(nil)
-            }
-            return
-        }
         let line = #"{"cmd":\#(command.rawValue),"app":"\#(app)"}"# + "\n"
         try? input?.write(contentsOf: Data(line.utf8))
     }
@@ -80,22 +71,6 @@ final class MediaBridge {
             players = next
             onUpdate(next)
         }
-    }
-}
-
-/// Official scripting for players that support it. Pure mapping.
-enum PlayerScript {
-    private static let apps = ["com.spotify.client": "Spotify", "com.apple.Music": "Music"]
-
-    static func source(app: String, command: MediaCommand) -> String? {
-        guard let name = apps[app] else { return nil }
-        let verb: String
-        switch command {
-        case .toggle: verb = "playpause"
-        case .next: verb = "next track"
-        case .previous: verb = "previous track"
-        }
-        return "tell application \"\(name)\" to \(verb)"
     }
 }
 
