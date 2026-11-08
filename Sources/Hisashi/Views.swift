@@ -32,7 +32,6 @@ struct NotchView: View {
         content(mode)
             .frame(width: size.width, height: size.height, alignment: .top)
             .padding(.horizontal, Layout.flare)
-            .background(shape.fill(.black))
             .clipShape(shape)
             // Shadow lives on the still black body, so live content above it
             // (the equalizer) does not make the system redraw the shadow every frame.
@@ -249,13 +248,14 @@ private struct Fade: ViewModifier {
 }
 
 extension AnyTransition {
-    /// Closed activity icons: blur in after the shape has grown, blur out in place before it narrows.
+    /// Closed activity icons fly out of the camera after the shape has grown,
+    /// and fly back into it before the shape narrows.
     static var activityFade: AnyTransition {
         .asymmetric(
             insertion: .modifier(active: Fade(active: true, scale: 0.6), identity: Fade(active: false, scale: 0.6))
                 .animation(.easeOut(duration: 0.3).delay(0.1)),
-            removal: .modifier(active: Fade(active: true, scale: 1), identity: Fade(active: false, scale: 1))
-                .animation(.easeOut(duration: 0.24))
+            removal: .modifier(active: Fade(active: true, scale: 0.6), identity: Fade(active: false, scale: 0.6))
+                .animation(.easeIn(duration: 0.26))
         )
     }
 
