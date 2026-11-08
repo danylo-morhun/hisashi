@@ -119,6 +119,9 @@ struct OpenPanel: View {
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 16)
+        .contextMenu {
+            Button("Quit Hisashi") { NSApp.terminate(nil) }
+        }
     }
 }
 
