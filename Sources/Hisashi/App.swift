@@ -26,7 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         media = MediaBridge { [weak self] players in
             guard let self, let model = self.model else { return }
             model.send(.players(players))
-            self.audio.setActive(model.state.hasActivity)
+            self.audio.setTarget(model.state.activity?.app)
         }
         model?.sendMedia = { [weak self] command, app in self?.media?.send(command, to: app) }
         media?.start()
@@ -40,7 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         media?.stop()
-        audio.setActive(false)
+        audio.setTarget(nil)
     }
 
     @objc private func screensChanged() { buildPanel() }
