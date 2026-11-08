@@ -9,27 +9,40 @@ struct CompactActivity: View {
     var body: some View {
         HStack {
             Artwork(nowPlaying: nowPlaying, size: 20, radius: 5)
+                .id(nowPlaying.trackKey)
+                .transition(.trackSwap)
             Spacer(minLength: notch.width)
             Equalizer(isPlaying: nowPlaying.isPlaying)
         }
         .padding(.horizontal, 10)
         .frame(height: notch.height)
+        .animation(.trackSwap, value: nowPlaying.trackKey)
     }
 }
 
 struct MediaPane: View {
-    let nowPlaying: NowPlaying?
+    let players: [NowPlaying]
+    let current: NowPlaying?
+    let select: (String) -> Void
     let command: (MediaCommand) -> Void
 
     var body: some View {
-        if let np = nowPlaying {
+        if let np = current {
             HStack(spacing: 16) {
-                Artwork(nowPlaying: np, size: 132, radius: 16)
+                ZStack {
+                    Artwork(nowPlaying: np, size: 132, radius: 16)
+                        .id(np.trackKey)
+                        .transition(.artworkSwap)
+                }
                 VStack(alignment: .leading, spacing: 0) {
                     HStack(alignment: .top) {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(np.title).font(.system(size: 17, weight: .semibold)).lineLimit(1)
-                            Text(np.artist).font(.system(size: 13)).foregroundStyle(Theme.muted).lineLimit(1)
+                        ZStack(alignment: .topLeading) {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(np.title).font(.system(size: 17, weight: .semibold)).lineLimit(1)
+                                Text(np.artist).font(.system(size: 13)).foregroundStyle(Theme.muted).lineLimit(1)
+                            }
+                            .id(np.trackKey)
+                            .transition(.trackSwap)
                         }
                         Spacer(minLength: 12)
                         Equalizer(isPlaying: np.isPlaying).padding(.top, 4)
@@ -40,13 +53,104 @@ struct MediaPane: View {
                     Controls(isPlaying: np.isPlaying, command: command)
                 }
                 .padding(.vertical, 4)
+                if players.count > 1 {
+                    SourceSwitcher(players: players, current: np.app, select: select)
+                }
             }
+            .animation(.trackSwap, value: np.trackKey)
         } else {
             RoundedRectangle(cornerRadius: 14)
                 .fill(Theme.surface)
                 .overlay(Text("Nothing playing").font(.system(size: 13)).foregroundStyle(Theme.muted))
         }
     }
+}
+
+/// One small app icon per player. The shown one is in color, the rest are grey.
+private struct SourceSwitcher: View {
+    let players: [NowPlaying]
+    let current: String
+    let select: (String) -> Void
+
+    var body: some View {
+        VStack(spacing: 6) {
+            ForEach(players, id: \.app) { p in
+                SourceButton(player: p, isCurrent: p.app == current) { select(p.app) }
+            }
+        }
+        .frame(maxHeight: .infinity)
+    }
+}
+
+private struct SourceButton: View {
+    let player: NowPlaying
+    let isCurrent: Bool
+    let action: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 3) {
+                Group {
+                    if let icon = AppIcon.image(for: player.app) {
+                        Image(nsImage: icon).resizable()
+                    } else {
+                        Image(systemName: "music.note")
+                    }
+                }
+                .frame(width: 22, height: 22)
+                .saturation(isCurrent ? 1 : 0)
+                .opacity(isCurrent || isHovered ? 1 : 0.45)
+                Circle()
+                    .fill(Theme.ink)
+                    .frame(width: 3, height: 3)
+                    .opacity(player.isPlaying ? 1 : 0)
+            }
+            .frame(width: 30, height: 34)
+            .background(RoundedRectangle(cornerRadius: 8).fill(isCurrent ? Theme.surface : .clear))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(player.title)
+        .onHover { isHovered = $0 }
+        .animation(.easeOut(duration: 0.2), value: isCurrent)
+    }
+}
+
+/// Blur, fade and a small vertical drift: the old track leaves upward, the new one rises in.
+private struct SwapEffect: ViewModifier {
+    let opacity: Double
+    let blur: CGFloat
+    let y: CGFloat
+    let scale: CGFloat
+
+    func body(content: Content) -> some View {
+        content.opacity(opacity).blur(radius: blur).offset(y: y).scaleEffect(scale)
+    }
+}
+
+extension AnyTransition {
+    static var trackSwap: AnyTransition {
+        .asymmetric(
+            insertion: .modifier(active: SwapEffect(opacity: 0, blur: 8, y: 10, scale: 1),
+                                 identity: SwapEffect(opacity: 1, blur: 0, y: 0, scale: 1)),
+            removal: .modifier(active: SwapEffect(opacity: 0, blur: 8, y: -10, scale: 1),
+                               identity: SwapEffect(opacity: 1, blur: 0, y: 0, scale: 1))
+        )
+    }
+
+    static var artworkSwap: AnyTransition {
+        .asymmetric(
+            insertion: .modifier(active: SwapEffect(opacity: 0, blur: 12, y: 0, scale: 0.88),
+                                 identity: SwapEffect(opacity: 1, blur: 0, y: 0, scale: 1)),
+            removal: .modifier(active: SwapEffect(opacity: 0, blur: 12, y: 0, scale: 1.06),
+                               identity: SwapEffect(opacity: 1, blur: 0, y: 0, scale: 1))
+        )
+    }
+}
+
+extension Animation {
+    static let trackSwap = Animation.spring(response: 0.55, dampingFraction: 0.86)
 }
 
 private struct Progress: View {
@@ -62,6 +166,7 @@ private struct Progress: View {
                         Capsule().fill(Theme.raised)
                         Capsule().fill(Theme.ink).frame(width: geo.size.width * fraction)
                     }
+                    .animation(.linear(duration: 1), value: fraction)
                 }
                 .frame(height: 4)
                 HStack {
@@ -72,7 +177,6 @@ private struct Progress: View {
                 .font(.system(size: 11).monospacedDigit())
                 .foregroundStyle(Theme.muted)
             }
-            .animation(.linear(duration: 1), value: fraction)
         }
     }
 }
