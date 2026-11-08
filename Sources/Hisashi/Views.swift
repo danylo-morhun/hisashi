@@ -34,7 +34,10 @@ struct NotchView: View {
             .padding(.horizontal, Layout.flare)
             .background(shape.fill(.black))
             .clipShape(shape)
-            .shadow(color: .black.opacity(mode == .compact ? 0 : 0.45), radius: 20, y: 10)
+            // Shadow lives on the still black body, so live content above it
+            // (the equalizer) does not make the system redraw the shadow every frame.
+            .background(shape.fill(.black).shadow(color: .black.opacity(mode == .compact ? 0 : 0.45),
+                                                  radius: mode == .compact ? 0 : 20, y: 10))
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .foregroundStyle(Theme.ink)
             .environment(\.colorScheme, .dark)
