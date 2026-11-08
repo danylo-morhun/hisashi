@@ -4,8 +4,14 @@ import PackageDescription
 let package = Package(
     name: "Hisashi",
     platforms: [.macOS(.v14)],
+    products: [
+        .executable(name: "Hisashi", targets: ["Hisashi"]),
+        // Loaded into /usr/bin/perl at runtime, see Sources/HisashiMedia.
+        .library(name: "HisashiMedia", type: .dynamic, targets: ["HisashiMedia"]),
+    ],
     targets: [
-        .executableTarget(name: "Hisashi", path: "Sources/Hisashi")
+        .executableTarget(name: "Hisashi", path: "Sources/Hisashi"),
+        .target(name: "HisashiMedia", path: "Sources/HisashiMedia"),
     ],
     swiftLanguageModes: [.v5]
 )
