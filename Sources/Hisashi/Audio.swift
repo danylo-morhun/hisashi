@@ -9,7 +9,8 @@ final class AudioLevels {
     var values: [Float] = [0, 0, 0, 0]
 }
 
-/// Listens to everything the Mac plays through a Core Audio tap (macOS 14.2+).
+/// Listens only to the playing app's own sound through a Core Audio process tap.
+/// Nothing is recorded or stored: samples become four numbers and are dropped.
 /// Needs the "System Audio Recording Only" permission; runs only while music plays.
 final class AudioTap {
     private let levels: AudioLevels
@@ -17,6 +18,7 @@ final class AudioTap {
     private var tapID = AudioObjectID(kAudioObjectUnknown)
     private var deviceID = AudioObjectID(kAudioObjectUnknown)
     private var procID: AudioDeviceIOProcID?
+    private var target: String?
 
     // Touched only on `queue`.
     private let fft = Spectrum.makeFFT()
@@ -29,13 +31,19 @@ final class AudioTap {
         self.levels = levels
     }
 
-    func setActive(_ active: Bool) {
-        if active { start() } else { stop() }
+    /// Follows the app whose sound drives the bars; nil stops listening.
+    func setTarget(_ app: String?) {
+        guard app != target || (app != nil && procID == nil) else { return }
+        stop()
+        if let app { start(app) }
     }
 
-    private func start() {
-        guard procID == nil else { return }
-        let description = CATapDescription(stereoGlobalTapButExcludeProcesses: [])
+    private func start(_ app: String) {
+        // Not outputting audio yet: try again on the next player update.
+        let processes = Self.audioProcesses(of: app)
+        guard !processes.isEmpty else { return }
+        target = app
+        let description = CATapDescription(stereoMixdownOfProcesses: processes)
         description.isPrivate = true
         description.muteBehavior = .unmuted
         guard AudioHardwareCreateProcessTap(description, &tapID) == noErr,
@@ -64,6 +72,7 @@ final class AudioTap {
     }
 
     private func stop() {
+        target = nil
         if let procID {
             AudioDeviceStop(deviceID, procID)
             AudioDeviceDestroyIOProcID(deviceID, procID)
@@ -99,6 +108,30 @@ final class AudioTap {
         lastPublish = now
         let snapshot = bars
         DispatchQueue.main.async { self.levels.values = snapshot }
+    }
+
+    /// Core Audio process objects of an app, its helper processes included.
+    private static func audioProcesses(of app: String) -> [AudioObjectID] {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyProcessObjectList,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain)
+        let system = AudioObjectID(kAudioObjectSystemObject)
+        var size: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(system, &address, 0, nil, &size) == noErr else { return [] }
+        var ids = [AudioObjectID](repeating: 0, count: Int(size) / MemoryLayout<AudioObjectID>.size)
+        guard AudioObjectGetPropertyData(system, &address, 0, nil, &size, &ids) == noErr else { return [] }
+        return ids.filter { id in
+            var bundle: Unmanaged<CFString>?
+            var bundleSize = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+            var bundleAddress = AudioObjectPropertyAddress(
+                mSelector: kAudioProcessPropertyBundleID,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain)
+            guard AudioObjectGetPropertyData(id, &bundleAddress, 0, nil, &bundleSize, &bundle) == noErr,
+                  let name = bundle?.takeRetainedValue() as String? else { return false }
+            return name == app || name.hasPrefix(app + ".")
+        }
     }
 
     private static func defaultOutputUID() -> String? {
