@@ -21,7 +21,7 @@ struct NotchView: View {
 
     var body: some View {
         let mode = model.state.mode
-        let size = Layout.size(mode, notch: model.notch)
+        let size = Layout.size(model.state, notch: model.notch)
         ZStack(alignment: .top) {
             NotchShape(flare: Layout.flare, bottomRadius: Layout.bottomRadius(mode))
                 .fill(.black)
@@ -41,7 +41,9 @@ struct NotchView: View {
     private func content(_ mode: NotchMode) -> some View {
         switch mode {
         case .compact:
-            Color.clear
+            if model.state.hasActivity, let np = model.state.nowPlaying {
+                CompactActivity(nowPlaying: np, notch: model.notch).transition(.blurFade)
+            }
         case .event:
             if let event = model.state.event {
                 EventBanner(event: event, notch: model.notch).transition(.blurFade)
@@ -114,7 +116,7 @@ struct OpenPanel: View {
             }
             .frame(height: model.notch.height)
 
-            TabPane(tab: model.state.tab)
+            TabPane(model: model)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .padding(.horizontal, 16)
@@ -162,6 +164,21 @@ struct IconButton: View {
 }
 
 struct TabPane: View {
+    let model: NotchModel
+
+    var body: some View {
+        Group {
+            switch model.state.tab {
+            case .media: MediaPane(nowPlaying: model.state.nowPlaying, command: model.media)
+            default: Placeholder(tab: model.state.tab)
+            }
+        }
+        .id(model.state.tab)
+        .transition(.opacity)
+    }
+}
+
+struct Placeholder: View {
     let tab: Tab
 
     var body: some View {
@@ -174,8 +191,6 @@ struct TabPane: View {
                     Text("Coming next").font(.system(size: 12)).foregroundStyle(Theme.muted)
                 }
             }
-            .id(tab)
-            .transition(.opacity)
     }
 }
 
