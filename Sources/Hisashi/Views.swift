@@ -18,23 +18,32 @@ enum Theme {
 
 struct NotchView: View {
     let model: NotchModel
+    /// The size actually drawn. It trails the target so growing and shrinking can be timed apart.
+    @State private var shown: CGSize?
+
+    static let spring = Animation.spring(response: 0.48, dampingFraction: 0.82)
 
     var body: some View {
         let mode = model.state.mode
-        let size = Layout.size(model.state, notch: model.notch)
-        ZStack(alignment: .top) {
-            NotchShape(flare: Layout.flare, bottomRadius: Layout.bottomRadius(mode))
-                .fill(.black)
-                .frame(width: size.width + Layout.flare * 2, height: size.height)
-                .shadow(color: .black.opacity(mode == .compact ? 0 : 0.45), radius: 20, y: 10)
-            content(mode)
-                .frame(width: size.width, height: size.height, alignment: .top)
-                .clipped()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .foregroundStyle(Theme.ink)
-        .environment(\.colorScheme, .dark)
-        .animation(.spring(response: 0.48, dampingFraction: 0.82), value: size)
+        let target = Layout.size(model.state, notch: model.notch)
+        let size = shown ?? target
+        let shape = NotchShape(flare: Layout.flare, bottomRadius: Layout.bottomRadius(height: size.height, notch: model.notch))
+        // Content and black body are one view, clipped by one shape: nothing can float outside it.
+        content(mode)
+            .frame(width: size.width, height: size.height, alignment: .top)
+            .padding(.horizontal, Layout.flare)
+            .background(shape.fill(.black))
+            .clipShape(shape)
+            .shadow(color: .black.opacity(mode == .compact ? 0 : 0.45), radius: 20, y: 10)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .foregroundStyle(Theme.ink)
+            .environment(\.colorScheme, .dark)
+            .onChange(of: target) { old, new in
+                // Losing the closed activity: let the icons fade first, then narrow,
+                // the reverse of how they arrived. Everything else moves at once.
+                let fadingActivity = mode == .compact && new.width < old.width && new.height == old.height
+                withAnimation(Self.spring.delay(fadingActivity ? 0.24 : 0)) { shown = new }
+            }
     }
 
     @ViewBuilder
@@ -42,8 +51,6 @@ struct NotchView: View {
         switch mode {
         case .compact:
             if let np = model.state.activity {
-                // Fixed width: when music stops the icons fade toward the camera
-                // while the shape narrows, instead of being pushed out at once.
                 let width = Layout.size(.compact, activity: true, notch: model.notch).width
                 CompactActivity(nowPlaying: np, notch: model.notch)
                     .frame(width: width)
@@ -51,10 +58,10 @@ struct NotchView: View {
             }
         case .event:
             if let event = model.state.event {
-                EventBanner(event: event, notch: model.notch).transition(.blurFade)
+                EventBanner(event: event, notch: model.notch).transition(.panelFade)
             }
         case .open:
-            OpenPanel(model: model).transition(.blurFade)
+            OpenPanel(model: model).transition(.panelFade)
         }
     }
 }
@@ -223,42 +230,39 @@ extension Tab {
     }
 }
 
-private struct ActivityFade: ViewModifier {
+/// Opacity, blur and scale from the top edge; one modifier for every notch transition.
+private struct Fade: ViewModifier {
     let active: Bool
-    func body(content: Content) -> some View {
-        content
-            .opacity(active ? 0 : 1)
-            .blur(radius: active ? 4 : 0)
-            .scaleEffect(active ? 0.6 : 1)
-    }
-}
+    var scale: CGFloat
+    var y: CGFloat = 0
 
-private struct BlurFade: ViewModifier {
-    let active: Bool
     func body(content: Content) -> some View {
         content
             .opacity(active ? 0 : 1)
             .blur(radius: active ? 6 : 0)
-            .offset(y: active ? -6 : 0)
+            .scaleEffect(active ? scale : 1, anchor: .top)
+            .offset(y: active ? y : 0)
     }
 }
 
 extension AnyTransition {
+    /// Closed activity icons: blur in after the shape has grown, blur out in place before it narrows.
     static var activityFade: AnyTransition {
         .asymmetric(
-            insertion: .modifier(active: ActivityFade(active: true), identity: ActivityFade(active: false))
+            insertion: .modifier(active: Fade(active: true, scale: 0.6), identity: Fade(active: false, scale: 0.6))
                 .animation(.easeOut(duration: 0.3).delay(0.1)),
-            removal: .modifier(active: ActivityFade(active: true), identity: ActivityFade(active: false))
-                .animation(.easeIn(duration: 0.3))
+            removal: .modifier(active: Fade(active: true, scale: 1), identity: Fade(active: false, scale: 1))
+                .animation(.easeOut(duration: 0.24))
         )
     }
 
-    static var blurFade: AnyTransition {
+    /// Panel and banner content: arrive after the shape, leave shrinking with it as one piece.
+    static var panelFade: AnyTransition {
         .asymmetric(
-            insertion: .modifier(active: BlurFade(active: true), identity: BlurFade(active: false))
+            insertion: .modifier(active: Fade(active: true, scale: 0.98, y: -6), identity: Fade(active: false, scale: 0.98, y: -6))
                 .animation(.easeOut(duration: 0.28).delay(0.12)),
-            removal: .modifier(active: BlurFade(active: true), identity: BlurFade(active: false))
-                .animation(.easeInOut(duration: 0.24))
+            removal: .modifier(active: Fade(active: true, scale: 0.7), identity: Fade(active: false, scale: 0.7))
+                .animation(NotchView.spring)
         )
     }
 }
