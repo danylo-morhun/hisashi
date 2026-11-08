@@ -26,6 +26,7 @@ final class AudioTap {
     private var bars: [Float] = [0, 0, 0, 0]
     private var peaks: [Float] = [-60, -60, -60, -60]
     private var lastPublish = Date.distantPast
+    private var published: [Float] = [0, 0, 0, 0]
 
     init(levels: AudioLevels) {
         self.levels = levels
@@ -82,7 +83,7 @@ final class AudioTap {
         if tapID != kAudioObjectUnknown { AudioHardwareDestroyProcessTap(tapID) }
         deviceID = AudioObjectID(kAudioObjectUnknown)
         tapID = AudioObjectID(kAudioObjectUnknown)
-        queue.async { self.pending.removeAll(); self.bars = [0, 0, 0, 0] }
+        queue.async { self.pending.removeAll(); self.bars = [0, 0, 0, 0]; self.published = [0, 0, 0, 0] }
         DispatchQueue.main.async { self.levels.values = [0, 0, 0, 0] }
     }
 
@@ -103,9 +104,12 @@ final class AudioTap {
             (bars, peaks) = Spectrum.step(levels: bars, peaks: peaks, decibels: db)
         }
 
+        // 30 updates a second at most, and none when the change is too small to see.
         let now = Date()
-        guard now.timeIntervalSince(lastPublish) >= 1.0 / 40 else { return }
+        guard now.timeIntervalSince(lastPublish) >= 1.0 / 30,
+              zip(bars, published).contains(where: { abs($0 - $1) > 0.02 }) else { return }
         lastPublish = now
+        published = bars
         let snapshot = bars
         DispatchQueue.main.async { self.levels.values = snapshot }
     }
