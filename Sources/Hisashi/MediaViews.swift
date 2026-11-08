@@ -258,7 +258,6 @@ struct Equalizer: View {
             }
         }
         .frame(height: 12)
-        .animation(.linear(duration: 0.06), value: levels.values)
     }
 }
 
