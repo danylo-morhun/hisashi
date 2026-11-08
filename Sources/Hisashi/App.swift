@@ -21,7 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildPanel()
-        model?.sendMedia = MediaBridge.send
+        model?.sendMedia = MediaKeys.send
         media = MediaBridge { [weak self] in self?.model?.send(.media($0)) }
         media?.start()
         // Dev aid: `open build/Hisashi.app --args --pinned` starts open.
