@@ -41,7 +41,7 @@ struct NotchView: View {
     private func content(_ mode: NotchMode) -> some View {
         switch mode {
         case .compact:
-            if model.state.hasActivity, let np = model.state.nowPlaying {
+            if let np = model.state.activity {
                 CompactActivity(nowPlaying: np, notch: model.notch).transition(.blurFade)
             }
         case .event:
@@ -169,7 +169,9 @@ struct TabPane: View {
     var body: some View {
         Group {
             switch model.state.tab {
-            case .media: MediaPane(nowPlaying: model.state.nowPlaying, command: model.media)
+            case .media:
+                MediaPane(players: model.state.players, current: model.state.nowPlaying,
+                          select: { model.send(.selectPlayer($0)) }, command: model.media)
             default: Placeholder(tab: model.state.tab)
             }
         }
