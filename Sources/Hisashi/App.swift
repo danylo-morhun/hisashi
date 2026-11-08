@@ -28,7 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             model.send(.players(players))
             self.audio.setTarget(model.state.activity?.app)
         }
-        model?.sendMedia = { [weak self] command, app in self?.media?.send(command, to: app) }
+        model?.sendMedia = { [weak self] command, player in self?.media?.send(command, to: player) }
         media?.start()
         // Dev aid: `open build/Hisashi.app --args --pinned` starts open.
         if CommandLine.arguments.contains("--pinned") { model?.send(.togglePin) }
