@@ -7,7 +7,7 @@ final class NotchModel {
     private(set) var state = NotchState()
     var notch: CGSize
     /// Set by the shell; sends a command to the active player.
-    var sendMedia: (MediaCommand) -> Void = { _ in }
+    var sendMedia: (MediaCommand, String) -> Void = { _, _ in }
     private var dismissTask: Task<Void, Never>?
 
     init(notch: CGSize) {
@@ -20,9 +20,11 @@ final class NotchModel {
         if case .show = action { scheduleDismiss() }
     }
 
+    /// Sends a command to the shown player.
     func media(_ command: MediaCommand) {
+        guard let app = state.nowPlaying?.app else { return }
         if command == .toggle { send(.togglePlayback(at: Date())) }
-        sendMedia(command)
+        sendMedia(command, app)
     }
 
     private func scheduleDismiss() {
