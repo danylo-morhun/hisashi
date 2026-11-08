@@ -5,6 +5,8 @@ import Foundation
 
 /// Values are MediaRemote command codes.
 enum MediaCommand: UInt32 {
+    case play = 0
+    case pause = 1
     case toggle = 2
     case next = 4
     case previous = 5
