@@ -40,8 +40,41 @@ struct NowPlaying: Equatable {
     }
 }
 
+/// Volume or brightness feedback shown in place of the system popup.
+struct Hud: Equatable {
+    enum Kind: Equatable { case volume, brightness }
+    var kind: Kind
+    var level: Float
+    var muted = false
+}
+
+/// Hardware keys the notch answers instead of the system.
+enum SystemKey: Int {
+    // NX_KEYTYPE codes.
+    case volumeUp = 0, volumeDown = 1, brightnessUp = 2, brightnessDown = 3, mute = 7
+}
+
+enum Levels {
+    /// One key press: 1/16 like macOS, 1/64 with Option+Shift. Snaps to the step grid.
+    static func step(_ level: Float, up: Bool, fine: Bool) -> Float {
+        let step: Float = fine ? 1 / 64 : 1 / 16
+        let next = ((level + (up ? step : -step)) / step).rounded() * step
+        return min(1, max(0, next))
+    }
+
+    /// New volume and mute after a key. Volume up unmutes, as in macOS.
+    static func volume(_ key: SystemKey, level: Float, muted: Bool, fine: Bool) -> (level: Float, muted: Bool) {
+        switch key {
+        case .mute: return (level, !muted)
+        case .volumeUp: return (step(level, up: true, fine: fine), false)
+        case .volumeDown: return (step(level, up: false, fine: fine), muted)
+        default: return (level, muted)
+        }
+    }
+}
+
 enum NotchMode: Equatable {
-    case compact, open, event
+    case compact, open, event, hud
 }
 
 struct NotchState: Equatable {
@@ -49,6 +82,7 @@ struct NotchState: Equatable {
     var isPinned = false
     var tab: Tab = .media
     var event: NotchEvent?
+    var hud: Hud?
     var players: [NowPlaying] = []
     var selectedID: String?
 
@@ -66,6 +100,7 @@ struct NotchState: Equatable {
 
     var mode: NotchMode {
         if event != nil { return .event }
+        if hud != nil { return .hud }
         return isHovering || isPinned ? .open : .compact
     }
 }
@@ -77,6 +112,8 @@ enum NotchAction {
     case select(Tab)
     case show(NotchEvent)
     case dismissEvent
+    case showHud(Hud)
+    case dismissHud
     case players([NowPlaying])
     case selectPlayer(String)
     case togglePlayback(at: Date)
@@ -91,6 +128,8 @@ func reduce(_ state: NotchState, _ action: NotchAction) -> NotchState {
     case .select(let tab): s.tab = tab
     case .show(let event): s.event = event
     case .dismissEvent: s.event = nil
+    case .showHud(let hud): s.hud = hud
+    case .dismissHud: s.hud = nil
     case .players(let next):
         let before = s.nowPlaying
         // A player that just started takes over the panel.
@@ -129,6 +168,8 @@ enum Layout {
     static let eventBody: CGFloat = 44
     /// Width added on each side of the camera for the closed live activity.
     static let activityEar: CGFloat = 38
+    /// Width added on each side of the camera for volume and brightness.
+    static let hudEar: CGFloat = 76
 
     static func size(_ state: NotchState, notch: CGSize) -> CGSize {
         size(state.mode, activity: state.hasActivity, notch: notch)
@@ -139,6 +180,7 @@ enum Layout {
         case .compact:
             return activity ? CGSize(width: notch.width + activityEar * 2, height: notch.height) : notch
         case .event: return CGSize(width: max(notch.width + 200, 380), height: notch.height + eventBody)
+        case .hud: return CGSize(width: notch.width + hudEar * 2, height: notch.height)
         case .open: return CGSize(width: openWidth, height: notch.height + openBody)
         }
     }
