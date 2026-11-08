@@ -54,6 +54,58 @@ enum SystemKey: Int {
     case volumeUp = 0, volumeDown = 1, brightnessUp = 2, brightnessDown = 3, mute = 7
 }
 
+/// A notification from another app, taken from the system banner as it arrives.
+struct AppNotice: Equatable, Identifiable {
+    /// The banner's own id, unique per notification.
+    let id: String
+    /// Display name of the sending app.
+    let app: String
+    let title: String
+    let subtitle: String
+    let body: String
+    /// The app's buttons, e.g. "Reply" or "Mark as Completed". Gone once the system banner expires.
+    var actions: [String] = []
+    /// Stays until clicked or closed, like the system's persistent alert style.
+    var persistent = false
+}
+
+/// What the user did with a notice in the notch.
+enum NoticeEffect: Equatable {
+    /// Open what the notification points to.
+    case open
+    /// One of the app's buttons.
+    case press(String)
+    case close
+}
+
+enum Notices {
+    /// Most notices kept waiting behind the shown one.
+    static let limit = 10
+
+    /// Adds a notice. The newest shows; temporary ones it covers are dropped,
+    /// persistent ones wait underneath.
+    static func add(_ notice: AppNotice, to queue: [AppNotice]) -> [AppNotice] {
+        Array((queue.filter { $0.persistent && $0.id != notice.id } + [notice]).suffix(limit))
+    }
+
+    /// Banner actions arrive as "Name:Mark as Completed\nTarget:…". Keeps the app's own buttons,
+    /// without the system ones every banner has.
+    static func buttons(_ actionNames: [String]) -> [String] {
+        let system: Set = ["Show Details", "Show", "Close"]
+        return actionNames.compactMap { name in
+            guard name.hasPrefix("Name:") else { return nil }
+            let title = String(name.dropFirst(5).prefix { $0 != "\n" })
+            return system.contains(title) ? nil : title
+        }
+    }
+
+    /// The banner describes itself as "App, Title, Subtitle, Body"; the app is what comes before the title.
+    static func appName(description: String, title: String) -> String {
+        if !title.isEmpty, let r = description.range(of: ", " + title) { return String(description[..<r.lowerBound]) }
+        return description.components(separatedBy: ", ").first ?? ""
+    }
+}
+
 enum Levels {
     /// One key press: 1/16 like macOS, 1/64 with Option+Shift. Snaps to the step grid.
     static func step(_ level: Float, up: Bool, fine: Bool) -> Float {
@@ -74,7 +126,7 @@ enum Levels {
 }
 
 enum NotchMode: Equatable {
-    case compact, open, event, hud
+    case compact, open, event, hud, notice
 }
 
 struct NotchState: Equatable {
@@ -83,6 +135,8 @@ struct NotchState: Equatable {
     var tab: Tab = .media
     var event: NotchEvent?
     var hud: Hud?
+    /// Waiting notices; the last one shows.
+    var notices: [AppNotice] = []
     var players: [NowPlaying] = []
     var selectedID: String?
 
@@ -98,9 +152,13 @@ struct NotchState: Equatable {
 
     var hasActivity: Bool { activity != nil }
 
+    var notice: AppNotice? { notices.last }
+
     var mode: NotchMode {
         if event != nil { return .event }
         if hud != nil { return .hud }
+        // Hovering a notice keeps it, it does not open the panel.
+        if notice != nil { return .notice }
         return isHovering || isPinned ? .open : .compact
     }
 }
@@ -114,6 +172,10 @@ enum NotchAction {
     case dismissEvent
     case showHud(Hud)
     case dismissHud
+    case notify(AppNotice)
+    case dismissNotice(String)
+    /// The system banner is gone, and with it the buttons.
+    case expireNotice(String)
     case players([NowPlaying])
     case selectPlayer(String)
     case togglePlayback(at: Date)
@@ -130,6 +192,10 @@ func reduce(_ state: NotchState, _ action: NotchAction) -> NotchState {
     case .dismissEvent: s.event = nil
     case .showHud(let hud): s.hud = hud
     case .dismissHud: s.hud = nil
+    case .notify(let notice): s.notices = Notices.add(notice, to: s.notices)
+    case .dismissNotice(let id): s.notices.removeAll { $0.id == id }
+    case .expireNotice(let id):
+        if let i = s.notices.firstIndex(where: { $0.id == id }) { s.notices[i].actions = [] }
     case .players(let next):
         let before = s.nowPlaying
         // A player that just started takes over the panel.
@@ -166,13 +232,19 @@ enum Layout {
     static let openWidth: CGFloat = 580
     static let openBody: CGFloat = 176
     static let eventBody: CGFloat = 44
+    static let noticeWidth: CGFloat = 440
+    static let noticeBody: CGFloat = 60
+    /// Extra height for the row of app buttons.
+    static let noticeActions: CGFloat = 38
     /// Width added on each side of the camera for the closed live activity.
     static let activityEar: CGFloat = 38
     /// Width added on each side of the camera for volume and brightness.
     static let hudEar: CGFloat = 76
 
     static func size(_ state: NotchState, notch: CGSize) -> CGSize {
-        size(state.mode, activity: state.hasActivity, notch: notch)
+        var s = size(state.mode, activity: state.hasActivity, notch: notch)
+        if state.mode == .notice, state.notice?.actions.isEmpty == false { s.height += noticeActions }
+        return s
     }
 
     static func size(_ mode: NotchMode, activity: Bool, notch: CGSize) -> CGSize {
@@ -181,6 +253,7 @@ enum Layout {
             return activity ? CGSize(width: notch.width + activityEar * 2, height: notch.height) : notch
         case .event: return CGSize(width: max(notch.width + 200, 380), height: notch.height + eventBody)
         case .hud: return CGSize(width: notch.width + hudEar * 2, height: notch.height)
+        case .notice: return CGSize(width: max(notch.width + 160, noticeWidth), height: notch.height + noticeBody)
         case .open: return CGSize(width: openWidth, height: notch.height + openBody)
         }
     }
