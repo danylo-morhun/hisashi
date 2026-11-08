@@ -127,9 +127,13 @@ enum Layout {
     static let activityEar: CGFloat = 38
 
     static func size(_ state: NotchState, notch: CGSize) -> CGSize {
-        switch state.mode {
+        size(state.mode, activity: state.hasActivity, notch: notch)
+    }
+
+    static func size(_ mode: NotchMode, activity: Bool, notch: CGSize) -> CGSize {
+        switch mode {
         case .compact:
-            return state.hasActivity ? CGSize(width: notch.width + activityEar * 2, height: notch.height) : notch
+            return activity ? CGSize(width: notch.width + activityEar * 2, height: notch.height) : notch
         case .event: return CGSize(width: max(notch.width + 200, 380), height: notch.height + eventBody)
         case .open: return CGSize(width: openWidth, height: notch.height + openBody)
         }
