@@ -17,7 +17,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var model: NotchModel?
     private var screenFrame: CGRect = .zero
     private var monitors: [Any] = []
-    private var statusItem: NSStatusItem?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildPanel()
@@ -25,7 +24,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if CommandLine.arguments.contains("--pinned") { model?.send(.togglePin) }
         monitors = MouseMonitors.install(onMove: { [weak self] in self?.mouseMoved($0) },
                                          onOutsideClick: { [weak self] in self?.model?.send(.unpin) })
-        statusItem = StatusMenu.make(target: self)
         NotificationCenter.default.addObserver(self, selector: #selector(screensChanged),
                                                name: NSApplication.didChangeScreenParametersNotification, object: nil)
     }
@@ -65,11 +63,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         panel.ignoresMouseEvents = !inside
     }
-
-    @objc func simulateTimer() { model?.send(.show(NotchEvent(title: "Focus block done", subtitle: "25:00 finished. Take 5.", tone: .success))) }
-    @objc func simulateBuild() { model?.send(.show(NotchEvent(title: "Build failed", subtitle: "kroki · main · 2 tests", tone: .failure))) }
-    @objc func simulateClaude() { model?.send(.show(NotchEvent(title: "Claude Code is waiting", subtitle: "kroki · needs your input", tone: .warning))) }
-    @objc func quit() { NSApp.terminate(nil) }
 }
 
 final class NotchPanel: NSPanel {
@@ -107,27 +100,6 @@ enum Haptics {
     /// A single light tick on the Force Touch trackpad. Silent with a mouse.
     static func tap() {
         NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
-    }
-}
-
-enum StatusMenu {
-    static func make(target: AppDelegate) -> NSStatusItem {
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        item.button?.image = NSImage(systemSymbolName: "rectangle.topthird.inset.filled", accessibilityDescription: "Hisashi")
-        let menu = NSMenu()
-        menu.addItem(entry("Simulate: timer done", #selector(AppDelegate.simulateTimer), target))
-        menu.addItem(entry("Simulate: build failed", #selector(AppDelegate.simulateBuild), target))
-        menu.addItem(entry("Simulate: Claude waiting", #selector(AppDelegate.simulateClaude), target))
-        menu.addItem(.separator())
-        menu.addItem(entry("Quit", #selector(AppDelegate.quit), target, key: "q"))
-        item.menu = menu
-        return item
-    }
-
-    private static func entry(_ title: String, _ action: Selector, _ target: AnyObject, key: String = "") -> NSMenuItem {
-        let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
-        item.target = target
-        return item
     }
 }
 
