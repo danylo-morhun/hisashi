@@ -37,19 +37,27 @@ struct NotchView: View {
         .animation(.spring(response: 0.48, dampingFraction: 0.82), value: size)
     }
 
+    // Each content keeps the full size of its own mode, so while the shape
+    // grows or shrinks it is clipped like a curtain instead of reflowing.
     @ViewBuilder
     private func content(_ mode: NotchMode) -> some View {
         switch mode {
         case .compact:
             if let np = model.state.activity {
-                CompactActivity(nowPlaying: np, notch: model.notch).transition(.blurFade)
+                CompactActivity(nowPlaying: np, notch: model.notch)
+                    .fixedFrame(Layout.size(.compact, activity: true, notch: model.notch))
+                    .transition(.blurFade)
             }
         case .event:
             if let event = model.state.event {
-                EventBanner(event: event, notch: model.notch).transition(.blurFade)
+                EventBanner(event: event, notch: model.notch)
+                    .fixedFrame(Layout.size(.event, activity: false, notch: model.notch))
+                    .transition(.blurFade)
             }
         case .open:
-            OpenPanel(model: model).transition(.blurFade)
+            OpenPanel(model: model)
+                .fixedFrame(Layout.size(.open, activity: false, notch: model.notch))
+                .transition(.blurFade)
         }
     }
 }
@@ -236,6 +244,12 @@ extension AnyTransition {
             removal: .modifier(active: BlurFade(active: true), identity: BlurFade(active: false))
                 .animation(.easeInOut(duration: 0.24))
         )
+    }
+}
+
+extension View {
+    func fixedFrame(_ size: CGSize) -> some View {
+        frame(width: size.width, height: size.height, alignment: .top)
     }
 }
 
