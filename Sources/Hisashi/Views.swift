@@ -34,7 +34,7 @@ struct NotchView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .foregroundStyle(Theme.ink)
         .environment(\.colorScheme, .dark)
-        .animation(.spring(response: 0.42, dampingFraction: 0.78), value: size)
+        .animation(.spring(response: 0.48, dampingFraction: 0.82), value: size)
     }
 
     @ViewBuilder
@@ -232,7 +232,7 @@ extension AnyTransition {
             insertion: .modifier(active: BlurFade(active: true), identity: BlurFade(active: false))
                 .animation(.easeOut(duration: 0.28).delay(0.12)),
             removal: .modifier(active: BlurFade(active: true), identity: BlurFade(active: false))
-                .animation(.easeIn(duration: 0.14))
+                .animation(.easeInOut(duration: 0.24))
         )
     }
 }
