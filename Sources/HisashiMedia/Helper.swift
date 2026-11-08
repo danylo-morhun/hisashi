@@ -23,11 +23,13 @@ final class Remote {
     private typealias EnableOverride = @convention(c) (Bool) -> Void
     private typealias SetOverride = @convention(c) (CFString?) -> Void
     private typealias SendCommand = @convention(c) (UInt32, CFDictionary?) -> Bool
+    private typealias ActivePID = @convention(c) (DispatchQueue, @escaping @convention(block) (Int32) -> Void) -> Void
 
     private let getClients: GetClients
     private let enableOverride: EnableOverride
     private let setOverride: SetOverride
     private let sendCommand: SendCommand
+    private let activePID: ActivePID
     private let pathClass: AnyClass
     private let requestClass: AnyClass
     private let origin: AnyObject?
@@ -38,6 +40,7 @@ final class Remote {
               let enableSym = dlsym(lib, "MRMediaRemoteSetNowPlayingApplicationOverrideEnabled"),
               let overrideSym = dlsym(lib, "MRMediaRemoteSetOverriddenNowPlayingApplication"),
               let sendSym = dlsym(lib, "MRMediaRemoteSendCommand"),
+              let pidSym = dlsym(lib, "MRMediaRemoteGetNowPlayingApplicationPID"),
               let pathClass = NSClassFromString("MRPlayerPath"),
               let requestClass = NSClassFromString("MRNowPlayingRequest"),
               let originClass = NSClassFromString("MROrigin") as? NSObject.Type
@@ -46,6 +49,7 @@ final class Remote {
         enableOverride = unsafeBitCast(enableSym, to: EnableOverride.self)
         setOverride = unsafeBitCast(overrideSym, to: SetOverride.self)
         sendCommand = unsafeBitCast(sendSym, to: SendCommand.self)
+        activePID = unsafeBitCast(pidSym, to: ActivePID.self)
         self.pathClass = pathClass
         self.requestClass = requestClass
         origin = originClass.perform(NSSelectorFromString("localOrigin"))?.takeUnretainedValue()
@@ -70,17 +74,24 @@ final class Remote {
         call(request, sel, queue) { info, _ in done(info as? [String: Any]) }
     }
 
-    /// Commands only reach the system's active player, so the target app is
-    /// briefly made the active one, sent the command, then released.
-    func send(_ command: UInt32, to app: String, on queue: DispatchQueue, done: @escaping () -> Void) {
-        enableOverride(true)
-        setOverride(app as CFString)
-        queue.asyncAfter(deadline: .now() + 0.15) { [self] in
-            _ = sendCommand(command, nil)
-            queue.asyncAfter(deadline: .now() + 0.4) { [self] in
-                setOverride(nil)
-                enableOverride(false)
-                done()
+    /// Commands only reach the system's active player. If the target is that
+    /// player, send plainly. Otherwise briefly make its app the active one.
+    /// An app with several player processes cannot be narrowed to one this way.
+    func send(_ command: UInt32, to app: String, pid: Int32, on queue: DispatchQueue, done: @escaping () -> Void) {
+        activePID(queue) { [self] active in
+            if active == pid {
+                _ = sendCommand(command, nil)
+                return done()
+            }
+            enableOverride(true)
+            setOverride(app as CFString)
+            queue.asyncAfter(deadline: .now() + 0.15) { [self] in
+                _ = sendCommand(command, nil)
+                queue.asyncAfter(deadline: .now() + 0.4) { [self] in
+                    setOverride(nil)
+                    enableOverride(false)
+                    done()
+                }
             }
         }
     }
@@ -95,7 +106,8 @@ final class Remote {
 final class Service {
     private let remote: Remote
     private let queue = DispatchQueue(label: "hisashi.media")
-    private var requests: [String: (key: String, request: NSObject)] = [:]
+    /// One request per player process, keyed "bundle#pid".
+    private var requests: [String: NSObject] = [:]
     private var lastLine = ""
     private var sentArtwork: [String: String] = [:]
 
@@ -115,35 +127,41 @@ final class Service {
             var alive: Set<String> = []
             for client in clients {
                 guard let app = client.value(forKey: "bundleIdentifier") as? String,
-                      let request = self.request(app: app, client: client) else { continue }
-                alive.insert(app)
+                      let pid = client.value(forKey: "processIdentifier") as? Int32 else { continue }
+                let id = "\(app)#\(pid)"
+                guard let request = self.request(id: id, client: client) else { continue }
+                alive.insert(id)
                 group.enter()
                 self.remote.info(request, on: self.queue) { info in
-                    if let player = Self.player(app: app, info: info) { players.append(player) }
+                    if let player = Self.player(app: app, pid: pid, info: info) { players.append(player) }
                     group.leave()
                 }
             }
             group.notify(queue: self.queue) {
                 self.requests = self.requests.filter { alive.contains($0.key) }
-                self.emit(players.sorted { ($0["app"] as? String ?? "") < ($1["app"] as? String ?? "") })
+                self.emit(players.sorted { Self.id($0) < Self.id($1) })
                 self.queue.asyncAfter(deadline: .now() + 0.5) { self.tick() }
             }
         }
     }
 
-    private func request(app: String, client: NSObject) -> NSObject? {
-        let key = "\(app)#\(client.value(forKey: "processIdentifier") ?? "")"
-        if let cached = requests[app], cached.key == key { return cached.request }
+    private func request(id: String, client: NSObject) -> NSObject? {
+        if let cached = requests[id] { return cached }
         guard let request = remote.request(for: client) else { return nil }
-        requests[app] = (key, request)
+        requests[id] = request
         return request
     }
 
-    private static func player(app: String, info: [String: Any]?) -> [String: Any]? {
+    private static func id(_ player: [String: Any]) -> String {
+        "\(player["app"] ?? "")#\(player["pid"] ?? "")"
+    }
+
+    private static func player(app: String, pid: Int32, info: [String: Any]?) -> [String: Any]? {
         let k = "kMRMediaRemoteNowPlayingInfo"
         guard let info, let title = info[k + "Title"] as? String, !title.isEmpty else { return nil }
         var p: [String: Any] = [
             "app": app,
+            "pid": pid,
             "title": title,
             "artist": info[k + "Artist"] as? String ?? "",
             "duration": info[k + "Duration"] as? Double ?? 0,
@@ -162,11 +180,12 @@ final class Service {
         var out = plain
         var newArtwork = false
         for (i, p) in players.enumerated() {
-            guard let art = p["artworkData"] as? Data, let app = p["app"] as? String else { continue }
+            guard let art = p["artworkData"] as? Data else { continue }
+            let id = Self.id(p)
             let key = "\(p["title"] ?? "")|\(p["artist"] ?? "")"
-            if sentArtwork[app] != key {
+            if sentArtwork[id] != key {
                 out[i]["artwork"] = art.base64EncodedString()
-                sentArtwork[app] = key
+                sentArtwork[id] = key
                 newArtwork = true
             }
         }
@@ -179,10 +198,11 @@ final class Service {
         while let line = readLine() {
             guard let data = line.data(using: .utf8),
                   let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let cmd = obj["cmd"] as? Int, let app = obj["app"] as? String else { continue }
+                  let cmd = obj["cmd"] as? Int, let app = obj["app"] as? String,
+                  let pid = obj["pid"] as? Int else { continue }
             // One command at a time, so overrides never overlap.
             let finished = DispatchSemaphore(value: 0)
-            queue.async { self.remote.send(UInt32(cmd), to: app, on: self.queue) { finished.signal() } }
+            queue.async { self.remote.send(UInt32(cmd), to: app, pid: Int32(pid), on: self.queue) { finished.signal() } }
             finished.wait()
         }
         exit(0) // stdin closed: the app is gone.
