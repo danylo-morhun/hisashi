@@ -54,7 +54,7 @@ struct MediaPane: View {
                 }
                 .padding(.vertical, 4)
                 if players.count > 1 {
-                    SourceSwitcher(players: players, current: np.app, select: select)
+                    SourceSwitcher(players: players, current: np.id, select: select)
                 }
             }
             .animation(.trackSwap, value: np.trackKey)
@@ -74,8 +74,8 @@ private struct SourceSwitcher: View {
 
     var body: some View {
         VStack(spacing: 6) {
-            ForEach(players, id: \.app) { p in
-                SourceButton(player: p, isCurrent: p.app == current) { select(p.app) }
+            ForEach(players, id: \.id) { p in
+                SourceButton(player: p, isCurrent: p.id == current) { select(p.id) }
             }
         }
         .frame(maxHeight: .infinity)
