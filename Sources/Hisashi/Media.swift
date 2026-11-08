@@ -1,56 +1,45 @@
-import AppKit
+import Foundation
 
-// Since macOS 15.4 MediaRemote answers only Apple-signed processes.
-// osascript is one, so it reads now playing for us.
-// Commands go out as media key presses, which every player understands.
+// Now playing comes from the HisashiMedia helper, hosted in /usr/bin/perl
+// because MediaRemote answers only Apple-signed processes. See Sources/HisashiMedia.
 
-/// Values are NX_KEYTYPE codes of the hardware media keys.
-enum MediaCommand: Int {
-    case toggle = 16
-    case next = 17
-    case previous = 18
+/// Values are MediaRemote command codes.
+enum MediaCommand: UInt32 {
+    case toggle = 2
+    case next = 4
+    case previous = 5
 }
 
-enum MediaKeys {
-    /// Posting key events needs Accessibility; the first call asks for it.
-    static func send(_ command: MediaCommand) {
-        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
-        guard AXIsProcessTrustedWithOptions(options) else { return }
-        post(command.rawValue, down: true)
-        post(command.rawValue, down: false)
-    }
-
-    private static func post(_ key: Int, down: Bool) {
-        let state = down ? 0xA : 0xB
-        let event = NSEvent.otherEvent(
-            with: .systemDefined, location: .zero,
-            modifierFlags: NSEvent.ModifierFlags(rawValue: UInt(state << 8)),
-            timestamp: 0, windowNumber: 0, context: nil,
-            subtype: 8, data1: (key << 16) | (state << 8), data2: -1
-        )
-        event?.cgEvent?.post(tap: .cghidEventTap)
-    }
-}
-
-/// Keeps one osascript process alive that prints a JSON line whenever now playing changes.
+/// Runs the helper, turns its lines into players, forwards commands to it.
 final class MediaBridge {
-    private let onUpdate: (NowPlaying?) -> Void
+    private let onUpdate: ([NowPlaying]) -> Void
     private var process: Process?
+    private var input: FileHandle?
     private var buffer = Data()
-    private var current: NowPlaying?
+    private var players: [NowPlaying] = []
 
-    init(onUpdate: @escaping (NowPlaying?) -> Void) {
+    private static let loader = """
+    use DynaLoader;
+    my $lib = DynaLoader::dl_load_file($ARGV[0], 0) or die DynaLoader::dl_error();
+    my $sym = DynaLoader::dl_find_symbol($lib, "hisashi_media_run") or die "no entry";
+    DynaLoader::dl_install_xsub("main::run", $sym);
+    run();
+    """
+
+    init(onUpdate: @escaping ([NowPlaying]) -> Void) {
         self.onUpdate = onUpdate
     }
 
     func start() {
+        guard let lib = Bundle.main.privateFrameworksURL?.appendingPathComponent("libHisashiMedia.dylib") else { return }
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        process.arguments = ["-l", "JavaScript", "-e", Scripts.stream]
-        let pipe = Pipe()
-        process.standardOutput = pipe
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/perl")
+        process.arguments = ["-e", Self.loader, lib.path]
+        let output = Pipe(), input = Pipe()
+        process.standardOutput = output
+        process.standardInput = input
         process.standardError = FileHandle.nullDevice
-        pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
+        output.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
             if data.isEmpty { handle.readabilityHandler = nil; return }
             DispatchQueue.main.async { self?.consume(data) }
@@ -60,6 +49,7 @@ final class MediaBridge {
         }
         try? process.run()
         self.process = process
+        self.input = input.fileHandleForWriting
     }
 
     func stop() {
@@ -67,92 +57,57 @@ final class MediaBridge {
         process?.terminate()
     }
 
+    func send(_ command: MediaCommand, to app: String) {
+        let line = #"{"cmd":\#(command.rawValue),"app":"\#(app)"}"# + "\n"
+        try? input?.write(contentsOf: Data(line.utf8))
+    }
+
     private func consume(_ data: Data) {
         buffer.append(data)
         while let end = buffer.firstIndex(of: 0x0A) {
             let line = Data(buffer[buffer.startIndex..<end])
             buffer.removeSubrange(buffer.startIndex...end)
-            let next = MediaMessage.decode(line, previous: current)
-            if next != current {
-                current = next
-                onUpdate(next)
-            }
+            guard let next = MediaWire.decode(line, previous: players), next != players else { continue }
+            players = next
+            onUpdate(next)
         }
     }
 }
 
-/// Wire format of one stream line. Pure decoding, no I/O.
-struct MediaMessage: Decodable {
-    var empty: Bool?
-    var title: String?
-    var artist: String?
-    var duration: Double?
-    var elapsed: Double?
-    var timestamp: Double?
-    var playing: Bool?
-    var app: String?
-    var artwork: String?
-
-    static func decode(_ data: Data, previous: NowPlaying?) -> NowPlaying? {
-        guard let m = try? JSONDecoder().decode(MediaMessage.self, from: data) else { return previous }
-        guard m.empty != true, let title = m.title, !title.isEmpty else { return nil }
-        let artist = m.artist ?? ""
-        let sameTrack = previous?.title == title && previous?.artist == artist
-        // Artwork is sent once per track to keep lines small.
-        let artwork = m.artwork.flatMap { Data(base64Encoded: $0) } ?? (sameTrack ? previous?.artwork : nil)
-        return NowPlaying(
-            title: title,
-            artist: artist,
-            duration: m.duration ?? 0,
-            elapsed: m.elapsed ?? 0,
-            timestamp: m.timestamp.map { Date(timeIntervalSince1970: $0) } ?? Date(),
-            isPlaying: m.playing ?? false,
-            app: m.app ?? "",
-            artwork: artwork
-        )
+/// Wire format of one helper line. Pure decoding, no I/O.
+struct MediaWire: Decodable {
+    struct Player: Decodable {
+        var app: String
+        var title: String
+        var artist: String?
+        var duration: Double?
+        var elapsed: Double?
+        var timestamp: Double?
+        var playing: Bool?
+        var artwork: String?
     }
-}
 
-private enum Scripts {
-    static let prelude = """
-    ObjC.import('Foundation');
-    $.NSBundle.bundleWithPath('/System/Library/PrivateFrameworks/MediaRemote.framework/').load;
-    """
+    var players: [Player]
 
-    static let stream = prelude + """
-    const R = $.NSClassFromString('MRNowPlayingRequest');
-    const out = $.NSFileHandle.fileHandleWithStandardOutput;
-    const K = 'kMRMediaRemoteNowPlayingInfo';
-    const val = (info, k) => { const v = info.objectForKey(K + k); return v.isNil() ? null : ObjC.unwrap(v); };
-    let last = '', artKey = '';
-    while (true) {
-      let msg = { empty: true };
-      const item = R.localNowPlayingItem;
-      const info = item.isNil() ? null : item.nowPlayingInfo;
-      if (info && !info.isNil()) {
-        const ts = info.objectForKey(K + 'Timestamp');
-        msg = {
-          title: val(info, 'Title') || '',
-          artist: val(info, 'Artist') || '',
-          duration: val(info, 'Duration') || 0,
-          elapsed: val(info, 'ElapsedTime') || 0,
-          timestamp: ts.isNil() ? Date.now() / 1000 : ts.timeIntervalSince1970,
-          playing: R.localIsPlaying,
-          app: ObjC.unwrap(R.localNowPlayingPlayerPath.client.bundleIdentifier) || ''
-        };
-        const art = info.objectForKey(K + 'ArtworkData');
-        const key = msg.title + '|' + msg.artist;
-        if (!art.isNil() && key !== artKey) {
-          msg.artwork = ObjC.unwrap(art.base64EncodedStringWithOptions(0));
-          artKey = key;
+    /// Nil means the line was unreadable and should be ignored.
+    static func decode(_ data: Data, previous: [NowPlaying]) -> [NowPlaying]? {
+        guard let wire = try? JSONDecoder().decode(MediaWire.self, from: data) else { return nil }
+        return wire.players.map { p in
+            let artist = p.artist ?? ""
+            let old = previous.first { $0.app == p.app && $0.title == p.title && $0.artist == artist }
+            // Artwork arrives once per track; keep it while the track stays.
+            let artwork = p.artwork.flatMap { Data(base64Encoded: $0) } ?? old?.artwork
+            let stamp = p.timestamp ?? 0
+            return NowPlaying(
+                title: p.title,
+                artist: artist,
+                duration: p.duration ?? 0,
+                elapsed: p.elapsed ?? 0,
+                timestamp: stamp > 0 ? Date(timeIntervalSince1970: stamp) : (old?.timestamp ?? Date()),
+                isPlaying: p.playing ?? false,
+                app: p.app,
+                artwork: artwork
+            )
         }
-      }
-      const line = JSON.stringify(msg);
-      if (line !== last) {
-        out.writeData($(line + '\\n').dataUsingEncoding($.NSUTF8StringEncoding));
-        last = line;
-      }
-      delay(0.5);
     }
-    """
 }
