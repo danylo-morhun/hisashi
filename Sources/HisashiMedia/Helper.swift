@@ -20,6 +20,7 @@ final class Remote {
     private typealias InitPath = @convention(c) (AnyObject, Selector, AnyObject?, AnyObject?, AnyObject?) -> Unmanaged<NSObject>?
     private typealias InitRequest = @convention(c) (AnyObject, Selector, AnyObject?) -> Unmanaged<NSObject>?
     private typealias RequestInfo = @convention(c) (AnyObject, Selector, DispatchQueue, @escaping @convention(block) (NSDictionary?, NSError?) -> Void) -> Void
+    private typealias RequestObject = @convention(c) (AnyObject, Selector, DispatchQueue, @escaping @convention(block) (AnyObject?, NSError?) -> Void) -> Void
     private typealias EnableOverride = @convention(c) (Bool) -> Void
     private typealias SetOverride = @convention(c) (CFString?) -> Void
     private typealias SendCommand = @convention(c) (UInt32, CFDictionary?) -> Bool
@@ -74,6 +75,15 @@ final class Remote {
         call(request, sel, queue) { info, _ in done(info as? [String: Any]) }
     }
 
+    func artwork(_ request: NSObject, on queue: DispatchQueue, _ done: @escaping (Data?) -> Void) {
+        let sel = NSSelectorFromString("requestNowPlayingItemArtworkOnQueue:completion:")
+        guard request.responds(to: sel) else { return done(nil) }
+        let call = unsafeBitCast(class_getMethodImplementation(requestClass, sel), to: RequestObject.self)
+        call(request, sel, queue) { art, _ in
+            done((art as? NSObject)?.value(forKey: "imageData") as? Data)
+        }
+    }
+
     /// Commands only reach the system's active player. If the target is that
     /// player, send plainly. Otherwise briefly make its app the active one.
     /// An app with several player processes cannot be narrowed to one this way.
@@ -108,6 +118,8 @@ final class Service {
     private let queue = DispatchQueue(label: "hisashi.media")
     /// One request per player process, keyed "bundle#pid".
     private var requests: [String: NSObject] = [:]
+    /// Artwork per player for its current track; empty data means the player has none.
+    private var artwork: [String: (track: String, data: Data)] = [:]
     private var lastLine = ""
     private var sentArtwork: [String: String] = [:]
 
@@ -133,12 +145,25 @@ final class Service {
                 alive.insert(id)
                 group.enter()
                 self.remote.info(request, on: self.queue) { info in
-                    if let player = Self.player(app: app, pid: pid, info: info) { players.append(player) }
-                    group.leave()
+                    guard var player = Self.player(app: app, pid: pid, info: info) else { return group.leave() }
+                    let track = "\(player["title"] ?? "")|\(player["artist"] ?? "")"
+                    let finish = { (data: Data) in
+                        if !data.isEmpty { player["artworkData"] = data }
+                        players.append(player)
+                        group.leave()
+                    }
+                    if let cached = self.artwork[id], cached.track == track { return finish(cached.data) }
+                    // New track: ask once for its artwork, then reuse it every tick.
+                    self.remote.artwork(request, on: self.queue) { data in
+                        let found = data ?? (player["artworkData"] as? Data) ?? Data()
+                        self.artwork[id] = (track, found)
+                        finish(found)
+                    }
                 }
             }
             group.notify(queue: self.queue) {
                 self.requests = self.requests.filter { alive.contains($0.key) }
+                self.artwork = self.artwork.filter { alive.contains($0.key) }
                 self.emit(players.sorted { Self.id($0) < Self.id($1) })
                 self.queue.asyncAfter(deadline: .now() + 0.5) { self.tick() }
             }
