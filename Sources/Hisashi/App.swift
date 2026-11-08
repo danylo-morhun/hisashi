@@ -20,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var media: MediaBridge?
     private let levels = AudioLevels()
     private lazy var audio = AudioTap(levels: levels)
+    private var keys: KeyTap?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildPanel()
@@ -30,6 +31,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         model?.sendMedia = { [weak self] command, player in self?.media?.send(command, to: player) }
         media?.start()
+        keys = KeyTap { [weak self] key, fine in self?.systemKey(key, fine: fine) ?? false }
+        keys?.start()
         // Dev aid: `open build/Hisashi.app --args --pinned` starts open.
         if CommandLine.arguments.contains("--pinned") { model?.send(.togglePin) }
         monitors = MouseMonitors.install(onMove: { [weak self] in self?.mouseMoved($0) },
@@ -64,6 +67,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.contentView = host
         panel.orderFrontRegardless()
         self.panel = panel
+    }
+
+    /// Applies a volume or brightness key and shows it in the notch.
+    /// False hands the key back to the system (e.g. an output without volume control).
+    private func systemKey(_ key: SystemKey, fine: Bool) -> Bool {
+        switch key {
+        case .volumeUp, .volumeDown, .mute:
+            guard let level = Volume.level() else { return false }
+            let next = Levels.volume(key, level: level, muted: Volume.isMuted(), fine: fine)
+            Volume.set(next.level)
+            Volume.setMuted(next.muted)
+            model?.send(.showHud(Hud(kind: .volume, level: next.level, muted: next.muted)))
+        case .brightnessUp, .brightnessDown:
+            guard let level = Brightness.level() else { return false }
+            let next = Levels.step(level, up: key == .brightnessUp, fine: fine)
+            Brightness.set(next)
+            model?.send(.showHud(Hud(kind: .brightness, level: next)))
+        }
+        return true
     }
 
     private func mouseMoved(_ point: NSPoint) {
