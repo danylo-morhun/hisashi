@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "Hisashi",
-    platforms: [.macOS(.v14)],
+    platforms: [.macOS(.v15)],
     products: [
         .executable(name: "Hisashi", targets: ["Hisashi"]),
         // Loaded into /usr/bin/perl at runtime, see Sources/HisashiMedia.
