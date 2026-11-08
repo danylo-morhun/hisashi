@@ -18,10 +18,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var screenFrame: CGRect = .zero
     private var monitors: [Any] = []
     private var media: MediaBridge?
+    private let levels = AudioLevels()
+    private lazy var audio = AudioTap(levels: levels)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildPanel()
-        media = MediaBridge { [weak self] in self?.model?.send(.players($0)) }
+        media = MediaBridge { [weak self] players in
+            guard let self, let model = self.model else { return }
+            model.send(.players(players))
+            self.audio.setActive(model.state.hasActivity)
+        }
         model?.sendMedia = { [weak self] command, app in self?.media?.send(command, to: app) }
         media?.start()
         // Dev aid: `open build/Hisashi.app --args --pinned` starts open.
@@ -32,7 +38,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                                name: NSApplication.didChangeScreenParametersNotification, object: nil)
     }
 
-    func applicationWillTerminate(_ notification: Notification) { media?.stop() }
+    func applicationWillTerminate(_ notification: Notification) {
+        media?.stop()
+        audio.setActive(false)
+    }
 
     @objc private func screensChanged() { buildPanel() }
 
@@ -49,7 +58,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                            width: size.width, height: size.height)
         panel?.close()
         let panel = NotchPanel(frame: frame)
-        let host = NSHostingView(rootView: NotchView(model: model))
+        let host = NSHostingView(rootView: NotchView(model: model).environment(levels))
         host.sizingOptions = []
         host.frame = CGRect(origin: .zero, size: size)
         panel.contentView = host
