@@ -58,7 +58,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let rect = Layout.visibleRect(model.state.mode, notch: model.notch, screen: screenFrame)
             .insetBy(dx: -Layout.hoverSlack, dy: -Layout.hoverSlack)
         let inside = rect.contains(point)
-        if inside != model.state.isHovering { model.send(.hover(inside)) }
+        if inside != model.state.isHovering {
+            let wasCompact = model.state.mode == .compact
+            model.send(.hover(inside))
+            if wasCompact && model.state.mode == .open { Haptics.tap() }
+        }
         panel.ignoresMouseEvents = !inside
     }
 
@@ -96,6 +100,13 @@ enum MouseMonitors {
             NSEvent.addLocalMonitorForEvents(matching: moves) { event in onMove(NSEvent.mouseLocation); return event },
             NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDown) { _ in onOutsideClick() },
         ].compactMap { $0 }
+    }
+}
+
+enum Haptics {
+    /// A single light tick on the Force Touch trackpad. Silent with a mouse.
+    static func tap() {
+        NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
     }
 }
 
