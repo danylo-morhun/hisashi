@@ -17,9 +17,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var model: NotchModel?
     private var screenFrame: CGRect = .zero
     private var monitors: [Any] = []
+    private var media: MediaBridge?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildPanel()
+        model?.sendMedia = MediaBridge.send
+        media = MediaBridge { [weak self] in self?.model?.send(.media($0)) }
+        media?.start()
         // Dev aid: `open build/Hisashi.app --args --pinned` starts open.
         if CommandLine.arguments.contains("--pinned") { model?.send(.togglePin) }
         monitors = MouseMonitors.install(onMove: { [weak self] in self?.mouseMoved($0) },
@@ -27,6 +31,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NotificationCenter.default.addObserver(self, selector: #selector(screensChanged),
                                                name: NSApplication.didChangeScreenParametersNotification, object: nil)
     }
+
+    func applicationWillTerminate(_ notification: Notification) { media?.stop() }
 
     @objc private func screensChanged() { buildPanel() }
 
@@ -53,7 +59,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func mouseMoved(_ point: NSPoint) {
         guard let model, let panel else { return }
-        let rect = Layout.visibleRect(model.state.mode, notch: model.notch, screen: screenFrame)
+        let rect = Layout.visibleRect(model.state, notch: model.notch, screen: screenFrame)
             .insetBy(dx: -Layout.hoverSlack, dy: -Layout.hoverSlack)
         let inside = rect.contains(point)
         if inside != model.state.isHovering {
