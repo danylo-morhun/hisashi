@@ -1,4 +1,4 @@
-import CoreGraphics
+import Foundation
 
 // Pure rules: state, actions, reducer, layout. No AppKit, no side effects.
 
@@ -16,6 +16,23 @@ struct NotchEvent: Equatable {
     let tone: Tone
 }
 
+struct NowPlaying: Equatable {
+    var title: String
+    var artist: String
+    var duration: Double
+    var elapsed: Double
+    var timestamp: Date
+    var isPlaying: Bool
+    var app: String
+    var artwork: Data?
+
+    /// Playback position now, extrapolated from the last snapshot.
+    func position(at now: Date) -> Double {
+        let p = elapsed + (isPlaying ? now.timeIntervalSince(timestamp) : 0)
+        return duration > 0 ? min(max(p, 0), duration) : max(p, 0)
+    }
+}
+
 enum NotchMode: Equatable {
     case compact, open, event
 }
@@ -25,6 +42,10 @@ struct NotchState: Equatable {
     var isPinned = false
     var tab: Tab = .media
     var event: NotchEvent?
+    var nowPlaying: NowPlaying?
+
+    /// Something worth showing beside the camera while closed.
+    var hasActivity: Bool { nowPlaying?.isPlaying == true }
 
     var mode: NotchMode {
         if event != nil { return .event }
@@ -39,6 +60,8 @@ enum NotchAction {
     case select(Tab)
     case show(NotchEvent)
     case dismissEvent
+    case media(NowPlaying?)
+    case togglePlayback(at: Date)
 }
 
 func reduce(_ state: NotchState, _ action: NotchAction) -> NotchState {
@@ -50,6 +73,15 @@ func reduce(_ state: NotchState, _ action: NotchAction) -> NotchState {
     case .select(let tab): s.tab = tab
     case .show(let event): s.event = event
     case .dismissEvent: s.event = nil
+    case .media(let info): s.nowPlaying = info
+    case .togglePlayback(let now):
+        // Optimistic: flip right away, the next player snapshot corrects it.
+        if var np = s.nowPlaying {
+            np.elapsed = np.position(at: now)
+            np.timestamp = now
+            np.isPlaying.toggle()
+            s.nowPlaying = np
+        }
     }
     return s
 }
@@ -64,10 +96,13 @@ enum Layout {
     static let openWidth: CGFloat = 580
     static let openBody: CGFloat = 176
     static let eventBody: CGFloat = 44
+    /// Width added on each side of the camera for the closed live activity.
+    static let activityEar: CGFloat = 38
 
-    static func size(_ mode: NotchMode, notch: CGSize) -> CGSize {
-        switch mode {
-        case .compact: return notch
+    static func size(_ state: NotchState, notch: CGSize) -> CGSize {
+        switch state.mode {
+        case .compact:
+            return state.hasActivity ? CGSize(width: notch.width + activityEar * 2, height: notch.height) : notch
         case .event: return CGSize(width: max(notch.width + 200, 380), height: notch.height + eventBody)
         case .open: return CGSize(width: openWidth, height: notch.height + openBody)
         }
@@ -86,8 +121,8 @@ enum Layout {
     }
 
     /// Visible shape rect in screen coordinates (origin bottom-left, AppKit style).
-    static func visibleRect(_ mode: NotchMode, notch: CGSize, screen: CGRect) -> CGRect {
-        let s = size(mode, notch: notch)
+    static func visibleRect(_ state: NotchState, notch: CGSize, screen: CGRect) -> CGRect {
+        let s = size(state, notch: notch)
         let w = s.width + flare * 2
         return CGRect(x: screen.midX - w / 2, y: screen.maxY - s.height, width: w, height: s.height)
     }
