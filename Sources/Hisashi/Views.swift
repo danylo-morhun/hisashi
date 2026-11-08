@@ -35,8 +35,8 @@ struct NotchView: View {
             .clipShape(shape)
             // Shadow lives on the still black body, so live content above it
             // (the equalizer) does not make the system redraw the shadow every frame.
-            .background(shape.fill(.black).shadow(color: .black.opacity(mode == .compact ? 0 : 0.45),
-                                                  radius: mode == .compact ? 0 : 20, y: 10))
+            .background(shape.fill(.black).shadow(color: .black.opacity(size.height > model.notch.height ? 0.45 : 0),
+                                                  radius: size.height > model.notch.height ? 20 : 0, y: 10))
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .foregroundStyle(Theme.ink)
             .environment(\.colorScheme, .dark)
@@ -61,6 +61,12 @@ struct NotchView: View {
         case .event:
             if let event = model.state.event {
                 EventBanner(event: event, notch: model.notch).transition(.panelFade)
+            }
+        case .hud:
+            if let hud = model.state.hud {
+                HudBar(hud: hud, notch: model.notch)
+                    .frame(width: Layout.size(.hud, activity: false, notch: model.notch).width)
+                    .transition(.activityFade)
             }
         case .open:
             OpenPanel(model: model).transition(.panelFade)
