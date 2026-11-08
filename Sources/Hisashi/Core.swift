@@ -24,10 +24,14 @@ struct NowPlaying: Equatable {
     var timestamp: Date
     var isPlaying: Bool
     var app: String
+    /// Process of the player; one app can run several (browser profiles).
+    var pid: Int32
     var artwork: Data?
 
+    var id: String { "\(app)#\(pid)" }
+
     /// Changes when the player or the track changes; drives the swap animation.
-    var trackKey: String { app + "|" + title + "|" + artist }
+    var trackKey: String { id + "|" + title + "|" + artist }
 
     /// Playback position now, extrapolated from the last snapshot.
     func position(at now: Date) -> Double {
@@ -46,11 +50,11 @@ struct NotchState: Equatable {
     var tab: Tab = .media
     var event: NotchEvent?
     var players: [NowPlaying] = []
-    var selectedApp: String?
+    var selectedID: String?
 
     /// The player shown and controlled: the chosen one, else whatever plays.
     var nowPlaying: NowPlaying? {
-        players.first { $0.app == selectedApp } ?? players.first { $0.isPlaying } ?? players.first
+        players.first { $0.id == selectedID } ?? players.first { $0.isPlaying } ?? players.first
     }
 
     /// What the closed notch shows beside the camera: the shown player if it plays, else any that does.
@@ -90,21 +94,21 @@ func reduce(_ state: NotchState, _ action: NotchAction) -> NotchState {
     case .players(let next):
         let before = s.nowPlaying
         // A player that just started takes over the panel.
-        let started = next.first { p in p.isPlaying && !(s.players.first { $0.app == p.app }?.isPlaying ?? false) }
-        if let started, started.app != before?.app {
-            s.selectedApp = started.app
-        } else if let chosen = s.selectedApp, !next.contains(where: { $0.app == chosen }) {
-            s.selectedApp = nil
+        let started = next.first { p in p.isPlaying && !(s.players.first { $0.id == p.id }?.isPlaying ?? false) }
+        if let started, started.id != before?.id {
+            s.selectedID = started.id
+        } else if let chosen = s.selectedID, !next.contains(where: { $0.id == chosen }) {
+            s.selectedID = nil
         }
         s.players = next
         // Stay on the shown player when it pauses, instead of falling back to another one.
-        s.selectedApp = s.nowPlaying?.app
-    case .selectPlayer(let app):
-        s.selectedApp = app
+        s.selectedID = s.nowPlaying?.id
+    case .selectPlayer(let id):
+        s.selectedID = id
     case .togglePlayback(let now):
         // Optimistic: flip right away, the next player snapshot corrects it.
-        if let i = s.players.firstIndex(where: { $0.app == s.nowPlaying?.app }) {
-            s.selectedApp = s.players[i].app
+        if let i = s.players.firstIndex(where: { $0.id == s.nowPlaying?.id }) {
+            s.selectedID = s.players[i].id
             s.players[i].elapsed = s.players[i].position(at: now)
             s.players[i].timestamp = now
             s.players[i].isPlaying.toggle()
