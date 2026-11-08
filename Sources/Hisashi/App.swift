@@ -21,6 +21,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let levels = AudioLevels()
     private lazy var audio = AudioTap(levels: levels)
     private var keys: KeyTap?
+    private let banners = BannerWatch()
+    private var termination: DispatchSourceSignal?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildPanel()
@@ -33,6 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         media?.start()
         keys = KeyTap { [weak self] key, fine in self?.systemKey(key, fine: fine) ?? false }
         keys?.start()
+        startNotices()
         // Dev aid: `open build/Hisashi.app --args --pinned` starts open.
         if CommandLine.arguments.contains("--pinned") { model?.send(.togglePin) }
         // Dev aid: `--hud volume|brightness 0.5` shows the HUD at that level.
@@ -46,6 +49,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }
+        // Dev aid: `--notice temporary|persistent` shows a sample notice with buttons.
+        if let i = CommandLine.arguments.firstIndex(of: "--notice"), CommandLine.arguments.count > i + 1 {
+            let persistent = CommandLine.arguments[i + 1] == "persistent"
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+                self?.model?.send(.notify(AppNotice(
+                    id: "sample", app: "Messages", title: "Anna", subtitle: "",
+                    body: "Are we still on for tonight? I booked the place at eight.",
+                    actions: ["Reply", "Mark as Read"], persistent: persistent)))
+            }
+        }
         monitors = MouseMonitors.install(onMove: { [weak self] in self?.mouseMoved($0) },
                                          onOutsideClick: { [weak self] in self?.model?.send(.unpin) })
         NotificationCenter.default.addObserver(self, selector: #selector(screensChanged),
@@ -55,6 +68,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         media?.stop()
         audio.setTarget(nil)
+        banners.stop()
+    }
+
+    /// Takes the system banners into the notch. Without Accessibility the system keeps showing them.
+    private func startNotices() {
+        guard let model else { return }
+        banners.onNotice = { model.send(.notify($0)) }
+        banners.onExpire = { model.send(.expireNotice($0)) }
+        model.noticeEffect = { [weak self] notice, effect in self?.banners.perform(effect, on: notice) }
+        guard banners.start() else { return }
+        // `pkill` and logout send SIGTERM; quit properly so no banner stays hidden.
+        signal(SIGTERM, SIG_IGN)
+        let source = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+        source.setEventHandler { NSApp.terminate(nil) }
+        source.resume()
+        termination = source
     }
 
     @objc private func screensChanged() { buildPanel() }
