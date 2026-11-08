@@ -59,8 +59,8 @@ final class MediaBridge {
         process?.terminate()
     }
 
-    func send(_ command: MediaCommand, to app: String) {
-        let line = #"{"cmd":\#(command.rawValue),"app":"\#(app)"}"# + "\n"
+    func send(_ command: MediaCommand, to player: NowPlaying) {
+        let line = #"{"cmd":\#(command.rawValue),"app":"\#(player.app)","pid":\#(player.pid)}"# + "\n"
         try? input?.write(contentsOf: Data(line.utf8))
     }
 
@@ -80,6 +80,7 @@ final class MediaBridge {
 struct MediaWire: Decodable {
     struct Player: Decodable {
         var app: String
+        var pid: Int32?
         var title: String
         var artist: String?
         var duration: Double?
@@ -96,7 +97,8 @@ struct MediaWire: Decodable {
         guard let wire = try? JSONDecoder().decode(MediaWire.self, from: data) else { return nil }
         return wire.players.map { p in
             let artist = p.artist ?? ""
-            let old = previous.first { $0.app == p.app && $0.title == p.title && $0.artist == artist }
+            let pid = p.pid ?? 0
+            let old = previous.first { $0.app == p.app && $0.pid == pid && $0.title == p.title && $0.artist == artist }
             // Artwork arrives once per track; keep it while the track stays.
             let artwork = p.artwork.flatMap { Data(base64Encoded: $0) } ?? old?.artwork
             let stamp = p.timestamp ?? 0
@@ -108,6 +110,7 @@ struct MediaWire: Decodable {
                 timestamp: stamp > 0 ? Date(timeIntervalSince1970: stamp) : (old?.timestamp ?? Date()),
                 isPlaying: p.playing ?? false,
                 app: p.app,
+                pid: pid,
                 artwork: artwork
             )
         }
