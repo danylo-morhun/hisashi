@@ -61,14 +61,14 @@ enum Layout {
     static let hoverSlack: CGFloat = 8
     /// Room for the drop shadow inside the transparent window.
     static let shadowRoom: CGFloat = 60
-    static let openWidth: CGFloat = 700
-    static let openBody: CGFloat = 256
-    static let eventBody: CGFloat = 48
+    static let openWidth: CGFloat = 580
+    static let openBody: CGFloat = 176
+    static let eventBody: CGFloat = 44
 
     static func size(_ mode: NotchMode, notch: CGSize) -> CGSize {
         switch mode {
         case .compact: return notch
-        case .event: return CGSize(width: max(notch.width + 240, 440), height: notch.height + eventBody)
+        case .event: return CGSize(width: max(notch.width + 200, 380), height: notch.height + eventBody)
         case .open: return CGSize(width: openWidth, height: notch.height + openBody)
         }
     }
@@ -76,8 +76,8 @@ enum Layout {
     static func bottomRadius(_ mode: NotchMode) -> CGFloat {
         switch mode {
         case .compact: return 10
-        case .event: return 22
-        case .open: return 30
+        case .event: return 20
+        case .open: return 24
         }
     }
 
