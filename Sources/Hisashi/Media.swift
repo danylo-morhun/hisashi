@@ -1,12 +1,35 @@
-import Foundation
+import AppKit
 
 // Since macOS 15.4 MediaRemote answers only Apple-signed processes.
-// osascript is one, so it reads now playing and sends commands for us.
+// osascript is one, so it reads now playing for us.
+// Commands go out as media key presses, which every player understands.
 
-enum MediaCommand: UInt32 {
-    case toggle = 2
-    case next = 4
-    case previous = 5
+/// Values are NX_KEYTYPE codes of the hardware media keys.
+enum MediaCommand: Int {
+    case toggle = 16
+    case next = 17
+    case previous = 18
+}
+
+enum MediaKeys {
+    /// Posting key events needs Accessibility; the first call asks for it.
+    static func send(_ command: MediaCommand) {
+        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+        guard AXIsProcessTrustedWithOptions(options) else { return }
+        post(command.rawValue, down: true)
+        post(command.rawValue, down: false)
+    }
+
+    private static func post(_ key: Int, down: Bool) {
+        let state = down ? 0xA : 0xB
+        let event = NSEvent.otherEvent(
+            with: .systemDefined, location: .zero,
+            modifierFlags: NSEvent.ModifierFlags(rawValue: UInt(state << 8)),
+            timestamp: 0, windowNumber: 0, context: nil,
+            subtype: 8, data1: (key << 16) | (state << 8), data2: -1
+        )
+        event?.cgEvent?.post(tap: .cghidEventTap)
+    }
 }
 
 /// Keeps one osascript process alive that prints a JSON line whenever now playing changes.
@@ -42,14 +65,6 @@ final class MediaBridge {
     func stop() {
         process?.terminationHandler = nil
         process?.terminate()
-    }
-
-    static func send(_ command: MediaCommand) {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        process.arguments = ["-l", "JavaScript", "-e", Scripts.command(command.rawValue)]
-        process.standardOutput = FileHandle.nullDevice
-        try? process.run()
     }
 
     private func consume(_ data: Data) {
@@ -140,11 +155,4 @@ private enum Scripts {
       delay(0.5);
     }
     """
-
-    static func command(_ id: UInt32) -> String {
-        prelude + """
-        ObjC.bindFunction('MRMediaRemoteSendCommand', ['bool', ['unsigned int', 'id']]);
-        $.MRMediaRemoteSendCommand(\(id), $());
-        """
-    }
 }
