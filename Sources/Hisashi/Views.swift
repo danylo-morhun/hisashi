@@ -68,6 +68,12 @@ struct NotchView: View {
                     .frame(width: Layout.size(.hud, activity: false, notch: model.notch).width)
                     .transition(.activityFade)
             }
+        case .notice:
+            if let notice = model.state.notice {
+                NoticeBanner(notice: notice, notch: model.notch) { model.act(notice, $0) }
+                    .id(notice.id)
+                    .transition(.panelFade)
+            }
         case .open:
             OpenPanel(model: model).transition(.panelFade)
         }
