@@ -11,6 +11,7 @@
     <key>LSMinimumSystemVersion</key><string>15.0</string>
     <key>LSUIElement</key><true/>
     <key>NSHighResolutionCapable</key><true/>
+    <key>NSAudioCaptureUsageDescription</key><string>Hisashi listens to what plays to draw the equalizer. Nothing is recorded or stored.</string>
     <key>NSAppleEventsUsageDescription</key><string>Hisashi plays, pauses and skips tracks in Spotify and Music.</string>
 </dict>
 </plist>
