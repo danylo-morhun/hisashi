@@ -42,7 +42,12 @@ struct NotchView: View {
         switch mode {
         case .compact:
             if let np = model.state.activity {
-                CompactActivity(nowPlaying: np, notch: model.notch).transition(.blurFade)
+                // Fixed width: when music stops the icons fade toward the camera
+                // while the shape narrows, instead of being pushed out at once.
+                let width = Layout.size(.compact, activity: true, notch: model.notch).width
+                CompactActivity(nowPlaying: np, notch: model.notch)
+                    .frame(width: width)
+                    .transition(.activityFade)
             }
         case .event:
             if let event = model.state.event {
@@ -218,6 +223,16 @@ extension Tab {
     }
 }
 
+private struct ActivityFade: ViewModifier {
+    let active: Bool
+    func body(content: Content) -> some View {
+        content
+            .opacity(active ? 0 : 1)
+            .blur(radius: active ? 4 : 0)
+            .scaleEffect(active ? 0.6 : 1)
+    }
+}
+
 private struct BlurFade: ViewModifier {
     let active: Bool
     func body(content: Content) -> some View {
@@ -229,6 +244,15 @@ private struct BlurFade: ViewModifier {
 }
 
 extension AnyTransition {
+    static var activityFade: AnyTransition {
+        .asymmetric(
+            insertion: .modifier(active: ActivityFade(active: true), identity: ActivityFade(active: false))
+                .animation(.easeOut(duration: 0.3).delay(0.1)),
+            removal: .modifier(active: ActivityFade(active: true), identity: ActivityFade(active: false))
+                .animation(.easeIn(duration: 0.3))
+        )
+    }
+
     static var blurFade: AnyTransition {
         .asymmetric(
             insertion: .modifier(active: BlurFade(active: true), identity: BlurFade(active: false))
