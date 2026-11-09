@@ -182,7 +182,7 @@ struct TabBar: View {
     var body: some View {
         HStack(spacing: 2) {
             ForEach(Tab.allCases, id: \.self) { tab in
-                IconButton(symbol: tab.symbol, label: tab.title, isOn: tab == selected) { pick(tab) }
+                IconButton(symbol: tab.symbol, label: tab.title, isOn: tab == selected, width: 28) { pick(tab) }
             }
         }
     }
@@ -192,6 +192,7 @@ struct IconButton: View {
     let symbol: String
     let label: String
     let isOn: Bool
+    var width: CGFloat = 32
     let action: () -> Void
     @State private var isHovered = false
 
@@ -199,7 +200,7 @@ struct IconButton: View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 12, weight: .medium))
-                .frame(width: 32, height: 26)
+                .frame(width: width, height: 26)
                 .foregroundStyle(isOn ? Theme.ink : Theme.muted)
                 .background(RoundedRectangle(cornerRadius: 8).fill(isOn ? Theme.raised : (isHovered ? Theme.surface : .clear)))
                 .contentShape(Rectangle())

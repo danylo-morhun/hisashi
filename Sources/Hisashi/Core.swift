@@ -483,7 +483,8 @@ enum Layout {
     static let hoverSlack: CGFloat = 8
     /// Room for the drop shadow inside the transparent window.
     static let shadowRoom: CGFloat = 60
-    static let openWidth: CGFloat = 580
+    /// Wide enough that every tab fits in the left ear, clear of the camera.
+    static let openWidth: CGFloat = 600
     static let openBody: CGFloat = 176
     static let eventBody: CGFloat = 44
     /// A notice spreads into the menu bar on both sides of the camera; each wing holds
