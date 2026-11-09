@@ -5,6 +5,16 @@ enum Theme {
     static let muted = Color(hex: 0x8E8E93)
     static let surface = Color(hex: 0x1C1C1E)
     static let raised = Color(hex: 0x2C2C2E)
+    /// Small caps labels, quieter than muted.
+    static let dim = Color(hex: 0x636366)
+    /// Body copy of a notice, a step above muted.
+    static let soft = Color(hex: 0xA1A1A6)
+    /// Notices waiting under the shown one.
+    static let deckNear = Color(hex: 0x0E0E10)
+    static let deckFar = Color(hex: 0x08080A)
+    // AppKit twins for layer drawing.
+    static let mutedNS = NSColor(red: 0x8E / 255, green: 0x8E / 255, blue: 0x93 / 255, alpha: 1)
+    static let raisedNS = NSColor(red: 0x2C / 255, green: 0x2C / 255, blue: 0x2E / 255, alpha: 1)
 
     static func color(_ tone: Tone) -> Color {
         switch tone {
@@ -20,14 +30,25 @@ struct NotchView: View {
     let model: NotchModel
     /// The size actually drawn. It trails the target so growing and shrinking can be timed apart.
     @State private var shown: CGSize?
+    /// Bottom corner radius drawn, animated along with the size.
+    @State private var radius: CGFloat?
 
     static let spring = Animation.spring(response: 0.48, dampingFraction: 0.82)
+    static let drop = Animation.spring(response: 0.55, dampingFraction: 0.66)
+
+    /// Notices waiting under the shown one. The last one leaving takes the deck with it.
+    private var deckCount: Int {
+        guard model.state.mode == .notice else { return 0 }
+        if model.state.notices.count == 1, model.state.notice?.leaving != nil { return 0 }
+        return model.state.notices.count - 1
+    }
 
     var body: some View {
         let mode = model.state.mode
         let target = Layout.size(model.state, notch: model.notch)
         let size = shown ?? target
-        let shape = NotchShape(flare: Layout.flare, bottomRadius: Layout.bottomRadius(height: size.height, notch: model.notch))
+        let targetRadius = Layout.bottomRadius(model.state, notch: model.notch)
+        let shape = NotchShape(flare: Layout.flare, bottomRadius: radius ?? targetRadius)
         // Content and black body are one view, clipped by one shape: nothing can float outside it.
         content(mode)
             .frame(width: size.width, height: size.height, alignment: .top)
@@ -37,6 +58,11 @@ struct NotchView: View {
             // (the equalizer) does not make the system redraw the shadow every frame.
             .background(shape.fill(.black).shadow(color: .black.opacity(size.height > model.notch.height ? 0.45 : 0),
                                                   radius: size.height > model.notch.height ? 20 : 0, y: 10))
+            // Notices waiting their turn peek out under the island.
+            .background(alignment: .top) {
+                NoticeDeck(waiting: deckCount)
+                    .padding(.top, max(0, size.height - 10))
+            }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .foregroundStyle(Theme.ink)
             .environment(\.colorScheme, .dark)
@@ -44,7 +70,12 @@ struct NotchView: View {
                 // Losing the closed activity: let the icons fade first, then narrow,
                 // the reverse of how they arrived. Everything else moves at once.
                 let fadingActivity = mode == .compact && new.width < old.width && new.height == old.height
-                withAnimation(Self.spring.delay(fadingActivity ? 0.24 : 0)) { shown = new }
+                // A notice drops out of the camera with a bounce; everything else keeps the calm spring.
+                let dropping = mode == .notice && old.height <= model.notch.height + 1 && new.height > old.height
+                withAnimation((dropping ? Self.drop : Self.spring).delay(fadingActivity ? 0.24 : 0)) {
+                    shown = new
+                    radius = targetRadius
+                }
             }
     }
 
@@ -70,9 +101,9 @@ struct NotchView: View {
             }
         case .notice:
             if let notice = model.state.notice {
-                NoticeBanner(notice: notice, notch: model.notch) { model.act(notice, $0) }
+                NoticeBanner(notice: notice, notch: model.notch, clock: model.noticeClock) { model.act(notice, $0) }
                     .id(notice.id)
-                    .transition(.panelFade)
+                    .transition(model.state.noticeEntrance == .rise ? .noticeRise : .noticeSwap)
             }
         case .open:
             OpenPanel(model: model).transition(.panelFade)
