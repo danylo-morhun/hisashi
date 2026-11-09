@@ -36,14 +36,12 @@ final class ClaudeWatch {
     func start() {
         try? FileManager.default.createDirectory(atPath: (Self.socketPath as NSString).deletingLastPathComponent,
                                                  withIntermediateDirectories: true)
+        // A second copy of the app must leave the socket alone: taking the path would cut off the first.
+        guard !Self.socketAnswers() else { return }
         unlink(Self.socketPath)
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0 else { return }
-        var addr = sockaddr_un()
-        addr.sun_family = sa_family_t(AF_UNIX)
-        withUnsafeMutableBytes(of: &addr.sun_path) { raw in
-            Self.socketPath.utf8CString.withUnsafeBytes { raw.copyMemory(from: UnsafeRawBufferPointer(rebasing: $0.prefix(raw.count - 1))) }
-        }
+        var addr = Self.address()
         let bound = withUnsafePointer(to: &addr) {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) }
         }
@@ -60,11 +58,32 @@ final class ClaudeWatch {
     }
 
     func stop() {
+        guard listener >= 0 else { return }
         for session in pending.keys { reply(session, nil) }
         accept?.cancel()
-        if listener >= 0 { close(listener) }
+        close(listener)
         unlink(Self.socketPath)
         watchdog?.invalidate()
+    }
+
+    private static func address() -> sockaddr_un {
+        var addr = sockaddr_un()
+        addr.sun_family = sa_family_t(AF_UNIX)
+        withUnsafeMutableBytes(of: &addr.sun_path) { raw in
+            socketPath.utf8CString.withUnsafeBytes { raw.copyMemory(from: UnsafeRawBufferPointer(rebasing: $0.prefix(raw.count - 1))) }
+        }
+        return addr
+    }
+
+    /// A running copy of the app is listening; a file left by a crash refuses the connection.
+    private static func socketAnswers() -> Bool {
+        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard fd >= 0 else { return false }
+        defer { close(fd) }
+        var addr = address()
+        return withUnsafePointer(to: &addr) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) }
+        } == 0
     }
 
     /// Reads one hook call: two lines, then hangs up so the script exits at once.
