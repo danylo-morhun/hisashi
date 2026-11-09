@@ -68,6 +68,8 @@ struct AppNotice: Equatable, Identifiable {
     var actions: [String] = []
     /// Stays until clicked or closed, like the system's persistent alert style.
     var persistent = false
+    /// The picture the app sent along, such as the sender's photo in a messenger.
+    var image: Data?
     /// The button just pressed; it turns into a check before the notice leaves.
     var pressed: String?
     /// Set while the notice animates away; how depends on why.
