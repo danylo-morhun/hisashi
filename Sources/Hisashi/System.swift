@@ -85,6 +85,52 @@ enum Brightness {
     }
 }
 
+/// Takes digits, backspace, return and escape from the keyboard while the timer's minutes are
+/// typed, without taking focus from the current window. Installed only for that long; every
+/// other key, and anything with a modifier, goes on as usual.
+final class KeyEntry {
+    var onKey: (EntryKey) -> Void = { _ in }
+    private var tap: CFMachPort?
+    private var source: CFRunLoopSource?
+
+    func start() {
+        guard tap == nil else { return }
+        let me = Unmanaged.passUnretained(self).toOpaque()
+        guard let made = CGEvent.tapCreate(
+            tap: .cgSessionEventTap, place: .headInsertEventTap, options: .defaultTap,
+            eventsOfInterest: CGEventMask(1 << CGEventType.keyDown.rawValue),
+            callback: { _, type, event, me in
+                Unmanaged<KeyEntry>.fromOpaque(me!).takeUnretainedValue().process(type, event)
+            },
+            userInfo: me)
+        else { return }
+        let loop = CFMachPortCreateRunLoopSource(nil, made, 0)
+        CFRunLoopAddSource(CFRunLoopGetMain(), loop, .commonModes)
+        CGEvent.tapEnable(tap: made, enable: true)
+        tap = made
+        source = loop
+    }
+
+    func stop() {
+        if let tap { CGEvent.tapEnable(tap: tap, enable: false) }
+        if let source { CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes) }
+        tap = nil
+        source = nil
+    }
+
+    private func process(_ type: CGEventType, _ event: CGEvent) -> Unmanaged<CGEvent>? {
+        let pass = Unmanaged.passUnretained(event)
+        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
+            return pass
+        }
+        guard event.flags.intersection([.maskCommand, .maskControl, .maskAlternate]).isEmpty,
+              let key = EntryKey(keyCode: Int(event.getIntegerValueField(.keyboardEventKeycode))) else { return pass }
+        onKey(key)
+        return nil
+    }
+}
+
 /// Catches volume, mute and brightness keys before the system does.
 /// The handler returns true when it took care of a key; the system then never
 /// sees it and shows no popup. Needs Accessibility; asks once, then waits.
