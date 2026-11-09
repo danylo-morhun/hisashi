@@ -13,6 +13,9 @@ final class AudioLevels {
 /// Nothing is recorded or stored: samples become four numbers and are dropped.
 /// Needs the "System Audio Recording Only" permission; runs only while music plays.
 final class AudioTap {
+    /// Called on the main thread, twice a second at most, while the app makes a sound.
+    var onSound: () -> Void = {}
+    private var lastSound = Date.distantPast
     private let levels: AudioLevels
     private let queue = DispatchQueue(label: "hisashi.audio", qos: .userInteractive)
     private var tapID = AudioObjectID(kAudioObjectUnknown)
@@ -94,6 +97,12 @@ final class AudioTap {
         let channels = max(1, Int(first.mNumberChannels))
         let count = Int(first.mDataByteSize) / MemoryLayout<Float>.size
         let samples = data.assumingMemoryBound(to: Float.self)
+        var loudest: Float = 0
+        vDSP_maxmgv(samples, 1, &loudest, vDSP_Length(count))
+        if loudest > 0.001, Date().timeIntervalSince(lastSound) >= 0.5 {
+            lastSound = Date()
+            DispatchQueue.main.async { self.onSound() }
+        }
         for i in stride(from: 0, to: count, by: channels) { pending.append(samples[i]) }
 
         // Half-overlapping frames keep the bars responsive.
