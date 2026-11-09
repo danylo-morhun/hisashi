@@ -32,12 +32,21 @@ enum AgentEvent: Equatable {
     /// It waits for the user: a permission or a question to answer in the terminal.
     case waiting(String)
     /// A question with choices; picking one in the notch answers it.
-    case question(String, options: [String])
+    /// `step` reads "2/3" when Claude asks several in a row, else it is empty.
+    case question(String, options: [String], step: String)
     /// The turn is over, with the reply.
     case stop(String)
     /// Stopped without a reply (Esc), noticed from the transcript.
     case interrupted
     case end
+}
+
+/// One of the questions Claude asks with AskUserQuestion.
+struct AgentQuestion: Equatable {
+    let text: String
+    let options: [String]
+    /// Several choices allowed; the notch leaves those to the terminal.
+    var multiple = false
 }
 
 /// One hook call: who sent it and what happened.
@@ -85,9 +94,9 @@ enum Agents {
         case .waiting(let text):
             // The idle reminder after a finished turn says nothing new.
             if s.working { notice = self.notice(s, text: text, asking: true, at: now) }
-        case .question(let text, let options):
+        case .question(let text, let options, let step):
             s.working = true
-            notice = self.notice(s, text: text, asking: true, at: now)
+            notice = self.notice(s, text: text, asking: true, at: now, step: step)
             notice?.actions = options
         case .stop(let text):
             s.working = false
@@ -104,10 +113,28 @@ enum Agents {
 
     /// A question or a finished reply, shown like any other app's notice.
     /// Questions stay until answered; replies go after the usual five seconds.
-    static func notice(_ s: AgentSession, text: String, asking: Bool, at now: Date) -> AppNotice {
+    static func notice(_ s: AgentSession, text: String, asking: Bool, at now: Date, step: String = "") -> AppNotice {
         AppNotice(id: noticePrefix + s.id + ":" + String(Int(now.timeIntervalSince1970 * 1000)),
                   app: app, title: asking ? s.project + " needs you" : s.project,
-                  subtitle: "", body: text, persistent: asking)
+                  subtitle: step, body: text, persistent: asking)
+    }
+
+    /// Claude's questions can be answered in the notch when each one takes a single choice.
+    static func answerable(_ questions: [AgentQuestion]) -> Bool {
+        !questions.isEmpty && questions.allSatisfy { !$0.multiple && !$0.options.isEmpty }
+    }
+
+    /// The i-th of Claude's questions as a notice event, numbered when there are several.
+    static func ask(_ questions: [AgentQuestion], at i: Int) -> AgentEvent {
+        .question(questions[i].text, options: questions[i].options,
+                  step: questions.count > 1 ? "\(i + 1)/\(questions.count)" : "")
+    }
+
+    /// Questions the notch cannot answer, as one line for the terminal to take over.
+    static func summary(_ questions: [AgentQuestion]) -> String {
+        guard let first = questions.first else { return "Has a question" }
+        let more = questions.count > 1 ? " (+\(questions.count - 1) more)" : ""
+        return (first.options.isEmpty ? first.text : first.text + " · " + first.options.joined(separator: " / ")) + more
     }
 
     /// The session a notice belongs to.
