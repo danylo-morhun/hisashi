@@ -98,20 +98,22 @@ final class BannerWatch {
 
     private func changed() {
         let dialogs = windows().filter { string($0, kAXSubroleAttribute) == "AXSystemDialog" }
+        let found = dialogs.flatMap { scan($0, depth: 0) }
         // The user opened Notification Center: it lives in the same window as the banners.
-        // Give the window back and take nothing from it; what it lists is old.
-        let panelOpen = dialogs.contains { isPanel($0, depth: 0) }
-        if panelOpen {
+        // A call or another banner the notch cannot draw needs the system's own window too.
+        // Either way give the window back and take nothing from it while it lasts.
+        let yield = dialogs.contains { isPanel($0, depth: 0) } || found.contains { passesThrough($0) }
+        if yield {
             for window in dialogs {
                 if let p = position(window), p.y >= Self.offscreenY { setPosition(window, CGPoint(x: p.x, y: 0)) }
             }
         }
         var live = Set<String>()
-        for banner in dialogs.flatMap({ scan($0, depth: 0) }) {
+        for banner in found {
             guard let id = string(banner, kAXIdentifierAttribute) else { continue }
             live.insert(id)
             guard banners[id] == nil, !old.contains(id) else { continue }
-            if panelOpen {
+            if yield {
                 old.insert(id)
                 continue
             }
@@ -124,6 +126,13 @@ final class BannerWatch {
             banners[id] = nil
             onExpire(id)
         }
+    }
+
+    /// Calls ring through their own interface, and a banner without title and body is drawn
+    /// by its app: both stay with the system.
+    private func passesThrough(_ banner: AXUIElement) -> Bool {
+        let n = notice(banner, id: "")
+        return Notices.passesThrough(app: n.app, title: n.title, body: n.body)
     }
 
     private func notice(_ banner: AXUIElement, id: String) -> AppNotice {
