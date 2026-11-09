@@ -1,119 +1,124 @@
 import AppKit
 import SwiftUI
 
-/// Another app's notification as an island dropped out of the camera:
-/// big icon, app, title, body, the app's buttons with the first one bright.
+/// Another app's notification spread into the menu bar beside the camera:
+/// icon and title in the left wing, time in the right, the text under the camera,
+/// the app's buttons below when wanted. Every column starts at the title's edge.
 /// Click opens what it points to; on hover the time turns into a close mark.
 struct NoticeBanner: View {
     let notice: AppNotice
     let notch: CGSize
+    let hovering: Bool
     let clock: Countdown?
     let act: (NoticeEffect) -> Void
-    @State private var isHovered = false
     @State private var arrived = false
 
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack(alignment: .center, spacing: 14) {
-                SenderIcon(app: notice.app)
-                    .frame(width: 44, height: 44)
-                    .scaleEffect(arrived ? 1 : 0.3)
-                    .rotationEffect(.degrees(arrived ? 0 : -12))
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(notice.app.uppercased())
-                        .font(.system(size: 11, weight: .semibold))
-                        .tracking(0.2)
-                        .foregroundStyle(Theme.dim)
-                        .lineLimit(1)
-                    Text(notice.title.isEmpty ? notice.app : notice.title)
-                        .font(.system(size: 15, weight: .semibold))
-                        .lineLimit(1)
-                    if let detail {
-                        Text(detail)
-                            .font(.system(size: 13))
-                            .foregroundStyle(Theme.soft)
-                            .lineSpacing(2)
-                            .lineLimit(2)
-                    }
-                }
-                Spacer(minLength: 8)
-                corner
-                    .frame(maxHeight: .infinity, alignment: .top)
-                    .padding(.top, 18)
-            }
-            .frame(height: Layout.noticeBody - 4)
-            .contentShape(Rectangle())
-            .onTapGesture { act(.open) }
+    private let edge: CGFloat = 14
+    private let textStart: CGFloat = 38
 
-            if !notice.actions.isEmpty {
-                ActionRow(actions: notice.actions, pressed: notice.pressed) { act(.press($0)) }
-                    .frame(height: Layout.noticeActions, alignment: .top)
-                    .transition(.opacity.combined(with: .scale(scale: 0.94, anchor: .top)))
+    var body: some View {
+        let width = notch.width + Layout.noticeWing * 2
+        let lines = Notices.bodyLines(notice.detail, width: width - Layout.noticeTextInset)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 0) {
+                leftWing
+                    .frame(width: Layout.noticeWing, alignment: .leading)
+                    .offset(x: arrived ? 0 : 50)
+                Spacer(minLength: notch.width)
+                rightWing
+                    .frame(width: Layout.noticeWing, alignment: .trailing)
+                    .offset(x: arrived ? 0 : -50)
             }
+            .frame(height: notch.height)
+            .opacity(arrived ? 1 : 0)
+            .blur(radius: arrived ? 0 : 4)
+            .modifier(WingExit(exit: notice.leaving))
+
+            VStack(alignment: .leading, spacing: 10) {
+                if lines > 0 {
+                    Text(notice.detail)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.soft)
+                        .lineSpacing(Layout.noticeLine - 14.3)
+                        .lineLimit(lines)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                        .onTapGesture { act(.open) }
+                }
+                if Notices.showsActions(notice, hovering: hovering) {
+                    ActionRow(actions: notice.actions, pressed: notice.pressed) { act(.press($0)) }
+                        .transition(.opacity.combined(with: .offset(y: -6)))
+                }
+            }
+            .padding(.leading, textStart)
+            .padding(.trailing, edge)
+            .padding(.top, lines > 0 ? 0 : Layout.noticeBottom - 2)
+            .opacity(arrived ? 1 : 0)
+            .offset(y: arrived ? 0 : -6)
+            .blur(radius: arrived ? 0 : 4)
+            .modifier(BodyExit(exit: notice.leaving))
         }
-        .padding(.horizontal, 22)
-        .padding(.top, notch.height + 4)
-        .modifier(NoticeExitEffect(exit: notice.leaving))
-        .onHover { isHovered = $0 }
-        .animation(.easeOut(duration: 0.15), value: isHovered)
-        .animation(.easeInOut(duration: 0.45), value: notice.leaving)
-        .animation(.spring(response: 0.4, dampingFraction: 0.75), value: notice.actions)
+        .frame(width: width, alignment: .topLeading)
+        .animation(.easeInOut(duration: 0.3), value: notice.leaving)
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: Notices.showsActions(notice, hovering: hovering))
         .onAppear {
-            withAnimation(.spring(response: 0.6, dampingFraction: 0.5).delay(0.16)) { arrived = true }
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.72).delay(0.06)) { arrived = true }
         }
+    }
+
+    private var leftWing: some View {
+        HStack(spacing: 6) {
+            SenderIcon(app: notice.app).frame(width: 18, height: 18)
+            Text(notice.title.isEmpty ? notice.app : notice.title)
+                .font(.system(size: 13, weight: .semibold))
+                .lineLimit(1)
+        }
+        .padding(.leading, edge)
+        .contentShape(Rectangle())
+        .onTapGesture { act(.open) }
     }
 
     /// Time and countdown ring; on hover the close mark spins in.
-    private var corner: some View {
+    private var rightWing: some View {
         ZStack(alignment: .trailing) {
-            HStack(spacing: 6) {
-                if let clock { CountdownRing(clock: clock).frame(width: 12, height: 12) }
+            HStack(spacing: 5) {
+                if let clock { CountdownRing(clock: clock).frame(width: 11, height: 11) }
                 Text("now").font(.system(size: 11)).foregroundStyle(Theme.muted)
             }
-            .opacity(isHovered ? 0 : 1)
+            .opacity(hovering ? 0 : 1)
             CloseMark { act(.close) }
-                .opacity(isHovered ? 1 : 0)
-                .scaleEffect(isHovered ? 1 : 0.5)
-                .rotationEffect(.degrees(isHovered ? 0 : -90))
-                .animation(.spring(response: 0.35, dampingFraction: 0.6), value: isHovered)
+                .opacity(hovering ? 1 : 0)
+                .scaleEffect(hovering ? 1 : 0.5)
+                .rotationEffect(.degrees(hovering ? 0 : -90))
         }
-        .frame(width: 52, height: 22, alignment: .trailing)
-    }
-
-    /// Subtitle and body under the title.
-    private var detail: String? {
-        let parts = [notice.subtitle, notice.body].filter { !$0.isEmpty }
-        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+        .padding(.trailing, edge)
+        .animation(.spring(response: 0.35, dampingFraction: 0.6), value: hovering)
     }
 }
 
-/// The exit plays on the content while the shape shrinks back into the camera.
-private struct NoticeExitEffect: ViewModifier {
+/// Wings slide back into the camera when the notice is opened; otherwise they lift away.
+private struct WingExit: ViewModifier {
     let exit: NoticeExit?
 
     func body(content: Content) -> some View {
         content
             .opacity(exit == nil ? 1 : 0)
-            .blur(radius: exit == nil ? 0 : 6)
-            .scaleEffect(scale, anchor: .top)
-            .offset(y: offset)
+            .blur(radius: exit == nil ? 0 : 3)
+            .scaleEffect(exit == .open ? 0.8 : 1)
+            .offset(y: exit == nil || exit == .open ? 0 : -8)
     }
+}
 
-    private var scale: CGFloat {
-        switch exit {
-        case .open: return 0.7
-        case .press, .timeout: return 0.98
-        default: return 1
-        }
-    }
+/// The text under the camera shrinks into it on open, lifts away otherwise.
+private struct BodyExit: ViewModifier {
+    let exit: NoticeExit?
 
-    private var offset: CGFloat {
-        switch exit {
-        case .open: return -30
-        case .close: return -18
-        case .press, .timeout: return -12
-        case nil: return 0
-        }
+    func body(content: Content) -> some View {
+        content
+            .opacity(exit == nil ? 1 : 0)
+            .blur(radius: exit == nil ? 0 : 3)
+            .scaleEffect(exit == .open ? 0.85 : 1, anchor: .top)
+            .offset(y: exit == nil || exit == .open ? 0 : -8)
     }
 }
 
@@ -193,9 +198,9 @@ private struct ActionRow: View {
         ZStack {
             if pressed != nil {
                 Image(systemName: "checkmark")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(.black)
-                    .frame(width: 34, height: 34)
+                    .frame(width: 24, height: 24)
                     .background(Circle().fill(Theme.color(.success)))
                     .transition(.scale(scale: 0.2).combined(with: .opacity))
             } else {
@@ -207,12 +212,12 @@ private struct ActionRow: View {
                 .transition(.scale(scale: 0.6).combined(with: .opacity))
             }
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .animation(.spring(response: 0.4, dampingFraction: 0.6), value: pressed)
     }
 
     private func row(_ shown: Int) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 6) {
             ForEach(Array(actions.prefix(shown).enumerated()), id: \.offset) { i, title in
                 Button { press(title) } label: { ActionCapsule(title: title, primary: i == 0) }
                     .buttonStyle(PressStyle())
@@ -245,11 +250,10 @@ private struct ActionCapsule: View {
             Text(title).lineLimit(1).fixedSize()
             if chevron { Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold)) }
         }
-        .font(.system(size: 13, weight: .medium))
+        .font(.system(size: 11.5, weight: .medium))
         .foregroundStyle(primary ? Color.black : Theme.ink)
-        .padding(.horizontal, 14)
-        .frame(maxWidth: .infinity)
-        .frame(height: 34)
+        .padding(.horizontal, 11)
+        .frame(height: 24)
         .background(SwiftUI.Capsule().fill(fill))
         .contentShape(SwiftUI.Capsule())
         .onHover { isHovered = $0 }
@@ -278,9 +282,9 @@ private struct CloseMark: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: "xmark")
-                .font(.system(size: 10, weight: .bold))
+                .font(.system(size: 9, weight: .bold))
                 .foregroundStyle(isHovered ? Theme.ink : Theme.muted)
-                .frame(width: 22, height: 22)
+                .frame(width: 20, height: 20)
                 .background(Circle().fill(isHovered ? Theme.raised : Theme.surface))
                 .contentShape(Circle())
         }
@@ -298,7 +302,7 @@ private struct SenderIcon: View {
         if let image = Senders.icon(app) {
             Image(nsImage: image).resizable().interpolation(.high)
         } else {
-            RoundedRectangle(cornerRadius: 11).fill(Theme.raised)
+            RoundedRectangle(cornerRadius: 5).fill(Theme.raised)
         }
     }
 }
@@ -307,18 +311,18 @@ extension AnyTransition {
     /// The next waiting notice comes up from below once the one above has left.
     static var noticeRise: AnyTransition {
         .asymmetric(
-            insertion: .modifier(active: Shift(active: true, y: 18, scale: 0.94), identity: Shift(active: false, y: 18, scale: 0.94))
+            insertion: .modifier(active: Shift(active: true, y: 8, scale: 0.97), identity: Shift(active: false, y: 8, scale: 0.97))
                 .animation(.spring(response: 0.75, dampingFraction: 0.92)),
             removal: .opacity.animation(.easeOut(duration: 0.1))
         )
     }
 
-    /// A new notice drops in front; the one it covers steps back.
+    /// A new notice comes up in place; the one it replaces lifts away.
     static var noticeSwap: AnyTransition {
         .asymmetric(
-            insertion: .modifier(active: Shift(active: true, y: -16, scale: 0.96), identity: Shift(active: false, y: -16, scale: 0.96))
+            insertion: .modifier(active: Shift(active: true, y: 8, scale: 0.98), identity: Shift(active: false, y: 8, scale: 0.98))
                 .animation(.spring(response: 0.5, dampingFraction: 0.72).delay(0.12)),
-            removal: .modifier(active: Shift(active: true, y: 16, scale: 0.95), identity: Shift(active: false, y: 16, scale: 0.95))
+            removal: .modifier(active: Shift(active: true, y: -8, scale: 0.98), identity: Shift(active: false, y: -8, scale: 0.98))
                 .animation(.easeIn(duration: 0.22))
         )
     }

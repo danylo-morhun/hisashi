@@ -86,7 +86,7 @@ struct NotchView: View {
             }
         case .notice:
             if let notice = model.state.notice {
-                NoticeBanner(notice: notice, notch: model.notch, clock: model.noticeClock) { model.act(notice, $0) }
+                NoticeBanner(notice: notice, notch: model.notch, hovering: model.state.isHovering, clock: model.noticeClock) { model.act(notice, $0) }
                     .id(notice.id)
                     .transition(model.state.noticeEntrance == .rise ? .noticeRise : .noticeSwap)
             }
