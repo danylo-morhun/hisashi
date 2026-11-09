@@ -430,8 +430,11 @@ struct NotchState: Equatable {
     /// The working Claude session the notch shows, if any.
     var agent: AgentSession? { Agents.shown(agents) }
 
-    /// Something to show beside the camera while closed: Claude at work or music playing.
-    var hasActivity: Bool { agent != nil || activity != nil }
+    /// Calendar, weather, battery, timer.
+    var today = TodayState()
+
+    /// Something to show beside the camera while closed: Claude at work, the timer or music playing.
+    var hasActivity: Bool { agent != nil || today.timer != nil || activity != nil }
 
     var notice: AppNotice? { notices.last }
 
@@ -440,7 +443,8 @@ struct NotchState: Equatable {
         if hud != nil { return .hud }
         // Hovering a notice keeps it, it does not open the panel.
         if notice != nil { return .notice }
-        return isHovering || isPinned ? .open : .compact
+        // Typing the timer's minutes keeps the panel open without the pointer on it.
+        return isHovering || isPinned || today.entry != nil ? .open : .compact
     }
 }
 
@@ -473,6 +477,21 @@ enum NotchAction {
     case togglePlayback(at: Date)
     /// A Claude Code hook spoke.
     case agent(AgentReport, at: Date)
+    /// A system banner arrived and was routed; see `Reminders`.
+    case banner(AppNotice, Reminders.Route, at: Date)
+    case events([DayEvent])
+    case calendarAccess(Bool)
+    case weather(Weather)
+    case power(Power?)
+    case startTimer(TimeInterval, at: Date)
+    case pauseTimer(at: Date)
+    case resumeTimer(at: Date)
+    case stopTimer
+    case beginEntry
+    case endEntry
+    case entryKey(EntryKey, at: Date)
+    /// Time passed: the timer may be done, a reminder may be due.
+    case tick(Date)
 }
 
 func reduce(_ state: NotchState, _ action: NotchAction) -> NotchState {
@@ -537,6 +556,19 @@ func reduce(_ state: NotchState, _ action: NotchAction) -> NotchState {
         let (sessions, notice) = Agents.apply(report, to: s.agents, at: now)
         s.agents = sessions
         if let notice { s = reduce(s, .notify(notice)) }
+    case .banner(let notice, let route, let now): s = Reminders.apply(route, notice, to: s, at: now)
+    case .events(let events): s.today.events = Today.unique(events)
+    case .calendarAccess(let allowed): s.today.calendarAllowed = allowed
+    case .weather(let weather): s.today.weather = weather
+    case .power(let power): s.today.power = power
+    case .startTimer(let seconds, let now): s.today.timer = Countdown(total: seconds).resumed(at: now)
+    case .pauseTimer(let now): s.today.timer = s.today.timer?.paused(at: now)
+    case .resumeTimer(let now): s.today.timer = s.today.timer?.resumed(at: now)
+    case .stopTimer: s.today.timer = nil
+    case .beginEntry: s.today.entry = ""
+    case .endEntry: s.today.entry = nil
+    case .entryKey(let key, let now): s = Today.type(key, in: s, at: now)
+    case .tick(let now): s = Today.tick(s, at: now)
     }
     return s
 }
@@ -595,9 +627,9 @@ enum Layout {
         return size(state.mode, activity: state.hasActivity, notch: notch)
     }
 
-    /// Closed: Claude at work takes the wider ears, else music its own.
+    /// Closed: Claude at work and the timer take the wider ears, else music its own.
     static func compactSize(_ state: NotchState, notch: CGSize) -> CGSize {
-        if state.agent != nil { return CGSize(width: notch.width + agentEar * 2, height: notch.height) }
+        if state.agent != nil || state.today.timer != nil { return CGSize(width: notch.width + agentEar * 2, height: notch.height) }
         return size(.compact, activity: state.hasActivity, notch: notch)
     }
 
