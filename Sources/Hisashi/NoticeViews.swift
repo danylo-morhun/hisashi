@@ -77,7 +77,7 @@ struct NoticeBanner: View {
 
     private func leftWing(_ label: String) -> some View {
         HStack(spacing: 6) {
-            SenderIcon(app: notice.app).frame(width: 18, height: 18)
+            SenderIcon(app: notice.app, photo: notice.image).frame(width: 18, height: 18)
             Text(label)
                 .font(.system(size: 13, weight: .semibold))
                 .lineLimit(1)
@@ -304,10 +304,31 @@ private struct CloseMark: View {
 }
 
 /// The sender's app icon.
+/// The sender: their photo with a small app badge when the app sent one, else the app icon.
 private struct SenderIcon: View {
     let app: String
+    var photo: Data?
 
     var body: some View {
+        if let photo, let image = NSImage(data: photo) {
+            Image(nsImage: image)
+                .resizable()
+                .interpolation(.high)
+                .aspectRatio(contentMode: .fill)
+                .clipShape(Circle())
+                .overlay(alignment: .bottomTrailing) {
+                    appIcon
+                        .frame(width: 9, height: 9)
+                        .background(Circle().fill(.black).padding(-1))
+                        .offset(x: 2, y: 2)
+                }
+        } else {
+            appIcon
+        }
+    }
+
+    @ViewBuilder
+    private var appIcon: some View {
         if let image = Senders.icon(app) {
             Image(nsImage: image).resizable().interpolation(.high)
         } else {
