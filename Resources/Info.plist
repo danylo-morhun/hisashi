@@ -11,6 +11,7 @@
     <key>LSMinimumSystemVersion</key><string>15.0</string>
     <key>LSUIElement</key><true/>
     <key>NSHighResolutionCapable</key><true/>
+    <key>NSAppleEventsUsageDescription</key><string>Hisashi brings the Terminal tab of a Claude Code session to the front when you click its notice.</string>
     <key>NSAudioCaptureUsageDescription</key><string>Hisashi listens to what plays to draw the equalizer. Nothing is recorded or stored.</string>
 </dict>
 </plist>
