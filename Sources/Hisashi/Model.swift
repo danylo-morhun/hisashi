@@ -27,10 +27,12 @@ final class NotchModel {
 
     func send(_ action: NotchAction) {
         let next = reduce(state, action)
+        // Every notice that just started leaving is removed once its exit has played.
+        let leaving = next.notices.filter { n in n.leaving != nil && state.notices.contains { $0.id == n.id && $0.leaving == nil } }
         if next != state { state = next }
         if case .show = action { scheduleDismiss() }
         if case .showHud = action { scheduleHudDismiss() }
-        if case .leaveNotice(let id, _) = action { finishLeaving(id) }
+        for notice in leaving { finishLeaving(notice.id) }
         syncNoticeClock()
     }
 
