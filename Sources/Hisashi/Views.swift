@@ -9,6 +9,30 @@ enum Theme {
     static let dim = Color(hex: 0x636366)
     /// Body copy of a notice, a step above muted.
     static let soft = Color(hex: 0xA1A1A6)
+    // AppKit twins for layer drawing.
+    static let mutedNS = NSColor(red: 0x8E / 255, green: 0x8E / 255, blue: 0x93 / 255, alpha: 1)
+    static let raisedNS = NSColor(red: 0x2C / 255, green: 0x2C / 255, blue: 0x2E / 255, alpha: 1)
+
+    static func color(_ tone: Tone) -> Color {
+        switch tone {
+        case .neutral: return ink
+        case .success: return Color(hex: 0x30D158)
+        case .warning: return Color(hex: 0xFF9F0A)
+        case .failure: return Color(hex: 0xFF453A)
+        }
+    }
+}
+
+struct NotchView: View {
+    let model: NotchModel
+    /// The size actually drawn. It trails the target so growing and shrinking can be timed apart.
+    @State private var shown: CGSize?
+    /// Bottom corner radius drawn, animated along with the size.
+    @State private var radius: CGFloat?
+
+    static let spring = Animation.spring(response: 0.48, dampingFraction: 0.82)
+    static let drop = Animation.spring(response: 0.55, dampingFraction: 0.66)
+
     var body: some View {
         let mode = model.state.mode
         let target = Layout.size(model.state, notch: model.notch)
