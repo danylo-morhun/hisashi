@@ -1,4 +1,5 @@
 import AppKit
+import ServiceManagement
 import SwiftUI
 
 @main
@@ -27,6 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildPanel()
+        launchAtLogin()
         media = MediaBridge { [weak self] players in
             guard let self, let model = self.model else { return }
             model.send(.players(players))
@@ -99,6 +101,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func screensChanged() { buildPanel() }
+
+    /// Starts with the Mac. Registered once only: turned off later in Login Items, it stays off.
+    private func launchAtLogin() {
+        guard SMAppService.mainApp.status == .notRegistered else { return }
+        try? SMAppService.mainApp.register()
+    }
 
     private func buildPanel() {
         guard let screen = NSScreen.notchScreen else { return }
