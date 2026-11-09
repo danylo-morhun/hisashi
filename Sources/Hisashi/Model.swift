@@ -10,6 +10,10 @@ final class NotchModel {
     var sendMedia: (MediaCommand, NowPlaying) -> Void = { _, _ in }
     /// Set by the shell: what a click, a button and the close mark do to the system notification.
     var noticeEffect: (AppNotice, NoticeEffect) -> Void = { _, _ in }
+    /// Set by the shell: clears an app's stack (nil: all) in Notification Center too.
+    var clearCenter: (String?) -> Void = { _ in }
+    /// Set by the shell: opens the app behind a listed notification.
+    var openHistory: (HistoryItem) -> Void = { _ in }
     private var dismissTask: Task<Void, Never>?
     private var hudTask: Task<Void, Never>?
     /// Time left on the shown temporary notice; the view draws it as a ring.
@@ -42,6 +46,12 @@ final class NotchModel {
             send(.pressNotice(notice.id, title))
             after(0.8) { $0.send(.leaveNotice(notice.id, .press)) }
         }
+    }
+
+    /// Clears from the list at once; Notification Center follows.
+    func clearHistory(_ app: String?) {
+        send(.clearHistory(app: app, at: Date()))
+        clearCenter(app)
     }
 
     /// Removes a notice once its exit has played.

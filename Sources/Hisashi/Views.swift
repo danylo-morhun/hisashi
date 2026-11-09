@@ -9,6 +9,12 @@ enum Theme {
     static let dim = Color(hex: 0x636366)
     /// Body copy of a notice, a step above muted.
     static let soft = Color(hex: 0xA1A1A6)
+    /// Cards in the notifications tab, and the strips of the cards behind them.
+    static let card = Color(hex: 0x0E0E10)
+    static let cardHover = Color(hex: 0x151517)
+    static let cardEdge = Color(hex: 0x111113)
+    static let cardNear = Color(hex: 0x0A0A0C)
+    static let cardFar = Color(hex: 0x070708)
     // AppKit twins for layer drawing.
     static let mutedNS = NSColor(red: 0x8E / 255, green: 0x8E / 255, blue: 0x93 / 255, alpha: 1)
     static let raisedNS = NSColor(red: 0x2C / 255, green: 0x2C / 255, blue: 0x2E / 255, alpha: 1)
@@ -214,6 +220,8 @@ struct TabPane: View {
             case .media:
                 MediaPane(players: model.state.players, current: model.state.nowPlaying,
                           select: { model.send(.selectPlayer($0)) }, command: model.media)
+            case .notifications:
+                HistoryPane(items: model.state.history, clear: model.clearHistory, open: model.openHistory)
             default: Placeholder(tab: model.state.tab)
             }
         }
@@ -243,6 +251,7 @@ extension Tab {
         switch self {
         case .media: return "music.note"
         case .today: return "calendar"
+        case .notifications: return "bell"
         case .shelf: return "tray"
         case .focus: return "scope"
         case .life: return "leaf"
@@ -253,6 +262,7 @@ extension Tab {
         switch self {
         case .media: return "Now playing"
         case .today: return "Today"
+        case .notifications: return "Notifications"
         case .shelf: return "Shelf"
         case .focus: return "Focus"
         case .life: return "Seikatsu"

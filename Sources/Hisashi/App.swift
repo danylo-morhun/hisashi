@@ -22,6 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var audio = AudioTap(levels: levels)
     private var keys: KeyTap?
     private let banners = BannerWatch()
+    private var store: NoticeStore?
     private var termination: DispatchSourceSignal?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -76,9 +77,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Takes the system banners into the notch. Without Accessibility the system keeps showing them.
     private func startNotices() {
         guard let model else { return }
-        banners.onNotice = { model.send(.notify($0)) }
+        banners.onNotice = { notice in
+            model.send(.notify(notice))
+            model.send(.remember(HistoryItem(id: notice.id, app: notice.app, title: notice.title,
+                                             body: notice.detail, date: Date(), image: notice.image)))
+        }
         banners.onExpire = { model.send(.expireNotice($0)) }
         model.noticeEffect = { [weak self] notice, effect in self?.banners.perform(effect, on: notice) }
+        model.clearCenter = { [weak self] app in self?.banners.clear(app: app) }
+        model.openHistory = { Apps.open($0) }
+        // The notifications tab mirrors Notification Center when the store is readable.
+        let store = NoticeStore { model.send(.stored($0, at: Date())) }
+        if store.start() { self.store = store }
         guard banners.start() else { return }
         // `pkill` and logout send SIGTERM; quit properly so no banner stays hidden.
         signal(SIGTERM, SIG_IGN)
