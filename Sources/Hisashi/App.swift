@@ -98,7 +98,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         banners.onExpire = { model.send(.expireNotice($0)) }
         model.noticeEffect = { [weak self] notice, effect in
             // A Claude notice opens the Terminal tab of its session; closing it needs nothing more.
+            // A picked choice answers Claude's question; anything else leaves it to the terminal.
             if let id = Agents.session(ofNotice: notice.id) {
+                if case .press(let choice) = effect { self?.claude.reply(id, choice) } else { self?.claude.reply(id, nil) }
                 if effect == .open { Terminals.focus(tty: model.state.agents.first { $0.id == id }?.tty) }
                 return
             }
