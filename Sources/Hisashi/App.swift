@@ -23,6 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var audio = AudioTap(levels: levels)
     private var keys: KeyTap?
     private let banners = BannerWatch()
+    private let claude = ClaudeWatch()
     private var store: NoticeStore?
     private var termination: DispatchSourceSignal?
 
@@ -39,6 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         keys = KeyTap { [weak self] key, fine in self?.systemKey(key, fine: fine) ?? false }
         keys?.start()
         startNotices()
+        startClaude()
         // Dev aid: `open build/Hisashi.app --args --pinned` starts open.
         if CommandLine.arguments.contains("--pinned") { model?.send(.togglePin) }
         // Dev aid: `--hud volume|brightness 0.5` shows the HUD at that level.
@@ -74,6 +76,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         media?.stop()
         audio.setTarget(nil)
         banners.stop()
+        claude.stop()
+    }
+
+    /// Claude Code sessions, told by their hooks (scripts/claude-hook.sh).
+    private func startClaude() {
+        guard let model else { return }
+        claude.onReport = { model.send(.agent($0, at: Date())) }
+        claude.sessions = { model.state.agents }
+        claude.start()
     }
 
     /// Takes the system banners into the notch. Without Accessibility the system keeps showing them.
@@ -85,7 +96,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                              body: notice.detail, date: Date(), image: notice.image)))
         }
         banners.onExpire = { model.send(.expireNotice($0)) }
-        model.noticeEffect = { [weak self] notice, effect in self?.banners.perform(effect, on: notice) }
+        model.noticeEffect = { [weak self] notice, effect in
+            // A Claude notice opens the Terminal tab of its session; closing it needs nothing more.
+            if let id = Agents.session(ofNotice: notice.id) {
+                if effect == .open { Terminals.focus(tty: model.state.agents.first { $0.id == id }?.tty) }
+                return
+            }
+            self?.banners.perform(effect, on: notice)
+        }
         model.clearCenter = { [weak self] app in self?.banners.clear(app: app) }
         model.openHistory = { Apps.open($0) }
         // The notifications tab mirrors Notification Center when the store is readable.
