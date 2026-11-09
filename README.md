@@ -13,6 +13,11 @@ the notifications tab mirrors notification center, one stack per app.\
 it needs full disk access, and clearing needs the "show notification centre"\
 shortcut set to ctrl option command f19 (keyboard shortcuts, mission control).
 
+claude code shows while it works: a turning spark and the time beside the camera,\
+the current step in the open notch, questions and finished replies as notices.\
+point its hooks at `scripts/claude-hook.sh` (userpromptsubmit, pretooluse,\
+posttooluse, notification, stop, sessionend).
+
 early. the shell works, the tabs come next.
 
 `scripts/run.sh` builds and launches it. needs command line tools, not xcode.
