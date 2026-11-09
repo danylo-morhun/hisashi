@@ -135,7 +135,9 @@ final class BannerWatch {
             }
             hide(banner)
             banners[id] = banner
-            onNotice(notice(banner, id: id))
+            var next = notice(banner, id: id)
+            if children(banner).contains(where: { role($0) == kAXImageRole }) { next.image = Photos.take(for: next) }
+            onNotice(next)
         }
         // Banners that left the tree took their buttons with them.
         for id in banners.keys where !live.contains(id) {
@@ -247,6 +249,38 @@ final class BannerWatch {
     static func openApp(named name: String) {
         guard let url = appURL(named: name) else { return }
         NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
+    }
+}
+
+/// Pictures apps attach to notifications, such as a messenger's sender photo.
+/// Notification Center copies each one into its own folder a moment before the banner
+/// shows and deletes it as soon as the app withdraws the notification, so it is read at once.
+/// The banner only says a picture exists; the newest file is it. A photo already copied for
+/// an earlier notification is not copied again, so the last one per sender is remembered.
+/// Needs Full Disk Access; without it notices simply have no photo.
+enum Photos {
+    private static let folder = URL(fileURLWithPath: NSHomeDirectory() + "/Library/Group Containers/group.com.apple.usernoted/attachments")
+    private static var bySender: [String: Data] = [:]
+
+    static func take(for notice: AppNotice) -> Data? {
+        let sender = notice.app + "\u{1F}" + notice.title
+        if let fresh = newest(within: 2) {
+            if bySender.count > 100 { bySender.removeAll() }
+            bySender[sender] = fresh
+            return fresh
+        }
+        return bySender[sender]
+    }
+
+    private static func newest(within seconds: TimeInterval) -> Data? {
+        let keys: [URLResourceKey] = [.contentModificationDateKey]
+        guard let files = try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: keys) else { return nil }
+        let dated = files.compactMap { url -> (URL, Date)? in
+            guard let date = try? url.resourceValues(forKeys: Set(keys)).contentModificationDate else { return nil }
+            return (url, date)
+        }
+        guard let (url, date) = dated.max(by: { $0.1 < $1.1 }), Date().timeIntervalSince(date) < seconds else { return nil }
+        return try? Data(contentsOf: url)
     }
 }
 
