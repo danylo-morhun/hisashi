@@ -29,8 +29,10 @@ enum AgentEvent: Equatable {
     case tool(String)
     /// A tool finished; back to thinking.
     case toolDone
-    /// It waits for the user: a permission or a question.
+    /// It waits for the user: a permission or a question to answer in the terminal.
     case waiting(String)
+    /// A question with choices; picking one in the notch answers it.
+    case question(String, options: [String])
     /// The turn is over, with the reply.
     case stop(String)
     /// Stopped without a reply (Esc), noticed from the transcript.
@@ -83,6 +85,10 @@ enum Agents {
         case .waiting(let text):
             // The idle reminder after a finished turn says nothing new.
             if s.working { notice = self.notice(s, text: text, asking: true, at: now) }
+        case .question(let text, let options):
+            s.working = true
+            notice = self.notice(s, text: text, asking: true, at: now)
+            notice?.actions = options
         case .stop(let text):
             s.working = false
             let reply = plain(text)
@@ -113,7 +119,7 @@ enum Agents {
     /// Notices still up for a session that has moved on: an answered question.
     static func stale(_ notices: [AppNotice], after report: AgentReport) -> [String] {
         switch report.event {
-        case .prompt, .tool, .toolDone, .interrupted, .end:
+        case .prompt, .tool, .toolDone, .interrupted, .end, .question:
             return notices.filter { $0.persistent && $0.leaving == nil && session(ofNotice: $0.id) == report.session }
                 .map(\.id)
         default: return []
