@@ -53,6 +53,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         startToday()
         // Dev aid: `open build/Hisashi.app --args --pinned` starts open.
         if CommandLine.arguments.contains("--pinned") { model?.send(.togglePin) }
+        // Dev aid: `--today` starts on the today tab.
+        if CommandLine.arguments.contains("--today") { model?.send(.select(.today)) }
+        // Dev aid: `--timer 90` starts a timer of that many seconds.
+        if let i = CommandLine.arguments.firstIndex(of: "--timer"), CommandLine.arguments.count > i + 1,
+           let seconds = TimeInterval(CommandLine.arguments[i + 1]) {
+            model?.send(.startTimer(seconds, at: Date()))
+        }
+        // Dev aid: `--entry` opens the timer's minutes field.
+        if CommandLine.arguments.contains("--entry") { model?.send(.beginEntry) }
+        // Dev aid: `--sample-day` fills the agenda with made-up events instead of the real calendar.
+        if CommandLine.arguments.contains("--sample-day") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+                let now = Date()
+                func at(_ minutes: Double) -> Date { now.addingTimeInterval(minutes * 60) }
+                self?.model?.send(.events([
+                    DayEvent(id: "s1", title: "Lunch", start: at(-120), end: at(-60)),
+                    DayEvent(id: "s2", title: "Design review", start: at(4), end: at(94), link: URL(string: "https://meet.google.com/sample")),
+                    DayEvent(id: "s3", title: "Gym", start: at(180), end: at(240)),
+                    DayEvent(id: "s4", title: "Call home", start: at(300), end: at(330)),
+                ]))
+            }
+        }
         // Dev aid: `--hud volume|brightness 0.5` shows the HUD at that level.
         if let i = CommandLine.arguments.firstIndex(of: "--hud"), CommandLine.arguments.count > i + 2,
            let level = Float(CommandLine.arguments[i + 2]) {
