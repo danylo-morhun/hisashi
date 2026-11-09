@@ -3,8 +3,9 @@ import Foundation
 
 /// Hears Claude Code hooks. scripts/claude-hook.sh connects to a unix socket and sends
 /// one line "tty pid" and one line with the hook's JSON; what comes back is the hook's output.
-/// Most calls get nothing back at once. A question with choices is held open until it is
-/// answered in the notch, or handed back empty so the terminal asks it instead.
+/// Most calls get nothing back at once. Questions with single choices are held open until
+/// each is answered in the notch, one after another, or handed back empty so the terminal
+/// asks them instead.
 /// A watchdog notices sessions that stopped without saying so: Esc leaves no Stop hook,
 /// a killed process no SessionEnd.
 final class ClaudeWatch {
@@ -18,8 +19,18 @@ final class ClaudeWatch {
     private var listener: Int32 = -1
     private var accept: DispatchSourceRead?
     private var watchdog: Timer?
-    /// Questions waiting for an answer, by session: the open connection and the hook's input.
-    private var pending: [String: (client: Int32, input: [String: Any])] = [:]
+    /// Questions waiting for answers, by session.
+    private var pending: [String: Pending] = [:]
+
+    private struct Pending {
+        let client: Int32
+        /// The hook's tool input, sent back with the answers added.
+        let input: [String: Any]
+        let questions: [AgentQuestion]
+        /// Who asked, for the reports of the questions that follow.
+        let report: AgentReport
+        var answers: [String: String] = [:]
+    }
     private let queue = DispatchQueue(label: "hisashi.claude")
 
     func start() {
@@ -79,22 +90,37 @@ final class ClaudeWatch {
         DispatchQueue.main.async { [weak self] in
             guard let self else { close(client); return }
             self.reply(report.session, nil)
-            self.pending[report.session] = (client, input)
+            self.pending[report.session] = Pending(client: client, input: input,
+                                                   questions: Self.questions(input), report: report)
             self.onReport(report)
         }
     }
 
-    /// Answers a session's question with the picked choice; nil lets the terminal ask it.
+    /// Answers the session's current question with the picked choice. The next one follows
+    /// once the pressed button has shown its check; after the last, Claude gets all answers.
+    /// nil hands every question back to the terminal.
     func reply(_ session: String, _ choice: String?) {
-        guard let (client, input) = pending.removeValue(forKey: session) else { return }
-        var out = Data()
-        if let choice, let question = Self.questions(input).first?["question"] as? String {
-            var answered = input
-            answered["answers"] = [question: choice]
-            let output: [String: Any] = ["hookSpecificOutput": [
-                "hookEventName": "PreToolUse", "permissionDecision": "allow", "updatedInput": answered]]
-            out = (try? JSONSerialization.data(withJSONObject: output)) ?? Data()
+        guard var p = pending.removeValue(forKey: session) else { return }
+        guard let choice else { return finish(p.client, nil) }
+        p.answers[p.questions[p.answers.count].text] = choice
+        guard p.answers.count == p.questions.count else {
+            pending[session] = p
+            let next = AgentReport(session: p.report.session, cwd: p.report.cwd, tty: p.report.tty, pid: p.report.pid,
+                                   transcript: p.report.transcript, event: Agents.ask(p.questions, at: p.answers.count))
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) { [weak self] in
+                if self?.pending[session] != nil { self?.onReport(next) }
+            }
+            return
         }
+        var answered = p.input
+        answered["answers"] = p.answers
+        finish(p.client, ["hookSpecificOutput": [
+            "hookEventName": "PreToolUse", "permissionDecision": "allow", "updatedInput": answered]])
+    }
+
+    /// Writes the hook's output, empty for none, and hangs up.
+    private func finish(_ client: Int32, _ output: [String: Any]?) {
+        let out = output.flatMap { try? JSONSerialization.data(withJSONObject: $0) } ?? Data()
         queue.async {
             out.withUnsafeBytes { _ = write(client, $0.baseAddress, $0.count) }
             close(client)
@@ -107,8 +133,12 @@ final class ClaudeWatch {
         return json["tool_input"] as? [String: Any]
     }
 
-    private static func questions(_ input: Any?) -> [[String: Any]] {
-        (input as? [String: Any])?["questions"] as? [[String: Any]] ?? []
+    private static func questions(_ input: Any?) -> [AgentQuestion] {
+        ((input as? [String: Any])?["questions"] as? [[String: Any]] ?? []).map { q in
+            AgentQuestion(text: q["question"] as? String ?? "Has a question",
+                          options: (q["options"] as? [[String: Any]] ?? []).compactMap { $0["label"] as? String },
+                          multiple: q["multiSelect"] as? Bool == true)
+        }
     }
 
     static func parse(_ data: Data) -> AgentReport? {
@@ -123,7 +153,9 @@ final class ClaudeWatch {
         let event: AgentEvent
         switch name {
         case "UserPromptSubmit": event = .prompt
-        case "PreToolUse" where tool == "AskUserQuestion": event = question(json["tool_input"])
+        case "PreToolUse" where tool == "AskUserQuestion":
+            let questions = questions(json["tool_input"])
+            event = Agents.answerable(questions) ? Agents.ask(questions, at: 0) : .waiting(Agents.summary(questions))
         case "PreToolUse": event = .tool(Agents.step(tool: tool, input: input))
         case "PostToolUse", "PostToolUseFailure": event = .toolDone
         case "Notification": event = .waiting(json["message"] as? String ?? "Needs your input")
@@ -135,20 +167,6 @@ final class ClaudeWatch {
                            tty: head.first.flatMap { $0 == "-" || $0 == "??" ? nil : $0 },
                            pid: head.count > 1 ? Int32(head[1]) : nil,
                            transcript: json["transcript_path"] as? String, event: event)
-    }
-
-    /// AskUserQuestion. One single-choice question can be answered in the notch;
-    /// several, or a multiple choice, are only shown and answered in the terminal.
-    private static func question(_ input: Any?) -> AgentEvent {
-        let all = questions(input)
-        guard let first = all.first else { return .waiting("Has a question") }
-        let text = first["question"] as? String ?? "Has a question"
-        let options = (first["options"] as? [[String: Any]] ?? []).compactMap { $0["label"] as? String }
-        if all.count == 1, first["multiSelect"] as? Bool != true, !options.isEmpty {
-            return .question(text, options: options)
-        }
-        let more = all.count > 1 ? " (+\(all.count - 1) more)" : ""
-        return .waiting(options.isEmpty ? text + more : text + " · " + options.joined(separator: " / ") + more)
     }
 
     /// Working sessions whose process died or whose last turn was cut off with Esc.
