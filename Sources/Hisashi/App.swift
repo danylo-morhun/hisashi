@@ -49,14 +49,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }
-        // Dev aid: `--notice temporary|persistent` shows a sample notice with buttons.
+        // Dev aid: `--notice temporary|persistent [photo.jpg]` shows a sample notice with buttons.
         if let i = CommandLine.arguments.firstIndex(of: "--notice"), CommandLine.arguments.count > i + 1 {
             let persistent = CommandLine.arguments[i + 1] == "persistent"
+            let photo = CommandLine.arguments.count > i + 2
+                ? try? Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[i + 2])) : nil
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
                 self?.model?.send(.notify(AppNotice(
                     id: "sample", app: "Messages", title: "Anna", subtitle: "",
                     body: "Are we still on for tonight? I booked the place at eight.",
-                    actions: ["Reply", "Mark as Read"], persistent: persistent)))
+                    actions: ["Reply", "Mark as Read"], persistent: persistent, image: photo)))
             }
         }
         monitors = MouseMonitors.install(onMove: { [weak self] in self?.mouseMoved($0) },
