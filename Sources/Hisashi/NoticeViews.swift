@@ -303,27 +303,8 @@ private struct SenderIcon: View {
     }
 }
 
-/// Cards behind the shown notice, one strip per waiting notice (two at most).
-struct NoticeDeck: View {
-    let waiting: Int
-
-    var body: some View {
-        ZStack(alignment: .top) {
-            strip(width: 370, color: Theme.deckFar).offset(y: 8).opacity(waiting > 1 ? 1 : 0)
-            strip(width: 420, color: Theme.deckNear).opacity(waiting > 0 ? 1 : 0)
-        }
-        .animation(.spring(response: 0.45, dampingFraction: 0.7), value: waiting)
-    }
-
-    private func strip(width: CGFloat, color: Color) -> some View {
-        UnevenRoundedRectangle(bottomLeadingRadius: 16, bottomTrailingRadius: 16)
-            .fill(color)
-            .frame(width: width, height: 18)
-    }
-}
-
 extension AnyTransition {
-    /// The next notice comes up out of the deck once the one above has left.
+    /// The next waiting notice comes up from below once the one above has left.
     static var noticeRise: AnyTransition {
         .asymmetric(
             insertion: .modifier(active: Shift(active: true, y: 18, scale: 0.94), identity: Shift(active: false, y: 18, scale: 0.94))
@@ -332,7 +313,7 @@ extension AnyTransition {
         )
     }
 
-    /// A new notice drops in front; the one it covers steps back into the deck.
+    /// A new notice drops in front; the one it covers steps back.
     static var noticeSwap: AnyTransition {
         .asymmetric(
             insertion: .modifier(active: Shift(active: true, y: -16, scale: 0.96), identity: Shift(active: false, y: -16, scale: 0.96))

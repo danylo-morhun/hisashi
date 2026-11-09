@@ -9,40 +9,6 @@ enum Theme {
     static let dim = Color(hex: 0x636366)
     /// Body copy of a notice, a step above muted.
     static let soft = Color(hex: 0xA1A1A6)
-    /// Notices waiting under the shown one.
-    static let deckNear = Color(hex: 0x0E0E10)
-    static let deckFar = Color(hex: 0x08080A)
-    // AppKit twins for layer drawing.
-    static let mutedNS = NSColor(red: 0x8E / 255, green: 0x8E / 255, blue: 0x93 / 255, alpha: 1)
-    static let raisedNS = NSColor(red: 0x2C / 255, green: 0x2C / 255, blue: 0x2E / 255, alpha: 1)
-
-    static func color(_ tone: Tone) -> Color {
-        switch tone {
-        case .neutral: return ink
-        case .success: return Color(hex: 0x30D158)
-        case .warning: return Color(hex: 0xFF9F0A)
-        case .failure: return Color(hex: 0xFF453A)
-        }
-    }
-}
-
-struct NotchView: View {
-    let model: NotchModel
-    /// The size actually drawn. It trails the target so growing and shrinking can be timed apart.
-    @State private var shown: CGSize?
-    /// Bottom corner radius drawn, animated along with the size.
-    @State private var radius: CGFloat?
-
-    static let spring = Animation.spring(response: 0.48, dampingFraction: 0.82)
-    static let drop = Animation.spring(response: 0.55, dampingFraction: 0.66)
-
-    /// Notices waiting under the shown one. The last one leaving takes the deck with it.
-    private var deckCount: Int {
-        guard model.state.mode == .notice else { return 0 }
-        if model.state.notices.count == 1, model.state.notice?.leaving != nil { return 0 }
-        return model.state.notices.count - 1
-    }
-
     var body: some View {
         let mode = model.state.mode
         let target = Layout.size(model.state, notch: model.notch)
@@ -58,11 +24,6 @@ struct NotchView: View {
             // (the equalizer) does not make the system redraw the shadow every frame.
             .background(shape.fill(.black).shadow(color: .black.opacity(size.height > model.notch.height ? 0.45 : 0),
                                                   radius: size.height > model.notch.height ? 20 : 0, y: 10))
-            // Notices waiting their turn peek out under the island.
-            .background(alignment: .top) {
-                NoticeDeck(waiting: deckCount)
-                    .padding(.top, max(0, size.height - 10))
-            }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .foregroundStyle(Theme.ink)
             .environment(\.colorScheme, .dark)

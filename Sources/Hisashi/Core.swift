@@ -73,7 +73,7 @@ struct AppNotice: Equatable, Identifiable {
     var leaving: NoticeExit?
 }
 
-/// How the shown notice came in: dropped from the camera, or risen from the deck below.
+/// How the shown notice came in: dropped from the camera, or risen from the queue below.
 enum NoticeEntrance: Equatable {
     case drop, rise
 }
@@ -131,8 +131,8 @@ enum Notices {
     /// Most notices kept waiting behind the shown one.
     static let limit = 10
 
-    /// Adds a notice on top of the deck. The newest shows, the others wait underneath.
-    /// One already in the deck comes back when Notification Center surfaces it again:
+    /// Adds a notice on top of the queue. The newest shows, the others wait underneath.
+    /// One already queued comes back when Notification Center surfaces it again:
     /// it is refreshed where it is, so it does not jump over the one being handled.
     static func add(_ notice: AppNotice, to queue: [AppNotice]) -> [AppNotice] {
         if let i = queue.firstIndex(where: { $0.id == notice.id }) {
@@ -143,7 +143,7 @@ enum Notices {
         return Array((queue.filter { $0.leaving == nil } + [notice]).suffix(limit))
     }
 
-    /// The system banner is gone. A temporary notice still waiting in the deck goes with it;
+    /// The system banner is gone. A temporary notice still waiting in the queue goes with it;
     /// the shown one stays, only without buttons.
     static func expire(_ id: String, in queue: [AppNotice]) -> [AppNotice] {
         guard let i = queue.firstIndex(where: { $0.id == id }) else { return queue }
