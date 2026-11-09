@@ -4,7 +4,7 @@ import Foundation
 // Pure rules: state, actions, reducer, layout. No AppKit, no side effects.
 
 enum Tab: CaseIterable, Equatable {
-    case media, today, shelf, focus, life
+    case media, today, notifications, shelf, focus, life
 }
 
 enum Tone: Equatable {
@@ -121,6 +121,76 @@ struct Countdown: Equatable {
         var c = self
         c.since = now
         return c
+    }
+}
+
+/// A notification as Notification Center keeps it, for the list in the open notch.
+struct HistoryItem: Equatable, Identifiable {
+    /// The notification's UUID, the same one its banner carries.
+    let id: String
+    /// Display name of the sending app.
+    let app: String
+    /// Bundle id when known (from Notification Center's store), to open the app.
+    var bundle: String?
+    let title: String
+    let body: String
+    let date: Date
+    var image: Data?
+}
+
+/// One app's notifications, newest first; the notch shows them as a stack.
+struct AppStack: Equatable, Identifiable {
+    let app: String
+    let items: [HistoryItem]
+    var id: String { app }
+    var latest: HistoryItem { items[0] }
+}
+
+enum History {
+    /// A banner is kept in the list this long while Notification Center has not stored it yet.
+    static let pending: TimeInterval = 12
+
+    /// Notification Center's list plus banners it has not stored yet, minus apps just cleared.
+    static func merge(stored: [HistoryItem], recent: [HistoryItem], cleared: [String: Date]) -> [HistoryItem] {
+        let ids = Set(stored.map(\.id))
+        return (stored + recent.filter { !ids.contains($0.id) })
+            .filter { item in cleared[item.app].map { item.date > $0 } ?? true }
+    }
+
+    /// Takes a fresh copy of the store. Photos from banners stay with their notification;
+    /// banners the store now has, or that waited too long, stop being pending.
+    static func store(_ items: [HistoryItem], over state: NotchState, at now: Date) -> NotchState {
+        var s = state
+        var photos: [String: Data] = [:]
+        for item in s.stored + s.recent { if let image = item.image { photos[item.id] = image } }
+        s.stored = items.map { item in
+            var item = item
+            if item.image == nil { item.image = photos[item.id] }
+            return item
+        }
+        let ids = Set(items.map(\.id))
+        s.recent = s.recent.filter { !ids.contains($0.id) && now.timeIntervalSince($0.date) < pending }
+        s.clearedApps = s.clearedApps.filter { now.timeIntervalSince($0.value) < pending }
+        return s
+    }
+
+    /// Stacks by app, the app with the newest notification first.
+    static func stacks(_ items: [HistoryItem]) -> [AppStack] {
+        Dictionary(grouping: items, by: \.app)
+            .map { AppStack(app: $0.key, items: $0.value.sorted { $0.date > $1.date }) }
+            .sorted { $0.latest.date > $1.latest.date }
+    }
+
+    /// Short age: now, 4m, 2h, Yesterday, then the date.
+    static func age(_ date: Date, now: Date, calendar: Calendar = .current) -> String {
+        let seconds = now.timeIntervalSince(date)
+        if seconds < 60 { return "now" }
+        if seconds < 3600 { return "\(Int(seconds / 60))m" }
+        if calendar.isDate(date, inSameDayAs: now) { return "\(Int(seconds / 3600))h" }
+        if let yesterday = calendar.date(byAdding: .day, value: -1, to: now), calendar.isDate(date, inSameDayAs: yesterday) {
+            return "Yesterday"
+        }
+        return date.formatted(.dateTime.day().month(.abbreviated))
     }
 }
 
@@ -285,6 +355,15 @@ struct NotchState: Equatable {
     /// Waiting notices; the last one shows.
     var notices: [AppNotice] = []
     var noticeEntrance = NoticeEntrance.drop
+    /// Notification Center's list as last read from its store.
+    var stored: [HistoryItem] = []
+    /// Banners shown in the notch that the store has not caught up with yet.
+    var recent: [HistoryItem] = []
+    /// Apps cleared from the notch, with when; their older notifications stay hidden until the store agrees.
+    var clearedApps: [String: Date] = [:]
+
+    /// Everything the notifications tab lists.
+    var history: [HistoryItem] { History.merge(stored: stored, recent: recent, cleared: clearedApps) }
     var players: [NowPlaying] = []
     var selectedID: String?
 
@@ -327,6 +406,12 @@ enum NotchAction {
     case pressNotice(String, String)
     /// The system banner is gone, and with it the buttons.
     case expireNotice(String)
+    /// A fresh copy of Notification Center's list.
+    case stored([HistoryItem], at: Date)
+    /// A banner the notch just showed, listed before the store has it.
+    case remember(HistoryItem)
+    /// Clears one app's stack, or every stack when nil.
+    case clearHistory(app: String?, at: Date)
     case players([NowPlaying])
     case selectPlayer(String)
     case togglePlayback(at: Date)
@@ -353,6 +438,10 @@ func reduce(_ state: NotchState, _ action: NotchAction) -> NotchState {
     case .pressNotice(let id, let title):
         if let i = s.notices.firstIndex(where: { $0.id == id }) { s.notices[i].pressed = title }
     case .expireNotice(let id): s.notices = Notices.expire(id, in: s.notices)
+    case .stored(let items, let now): s = History.store(items, over: s, at: now)
+    case .remember(let item): s.recent = s.recent.filter { $0.id != item.id } + [item]
+    case .clearHistory(let app, let now):
+        for name in app.map({ [$0] }) ?? Array(Set(s.history.map(\.app))) { s.clearedApps[name] = now }
     case .players(let next):
         let before = s.nowPlaying
         // A player that just started takes over the panel.
