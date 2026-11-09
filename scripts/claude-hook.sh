@@ -9,7 +9,8 @@ payload="$(cat)"
 pid=$PPID
 while [ "$pid" -gt 1 ]; do
   read -r tty ppid comm <<<"$(ps -o tty=,ppid=,comm= -p "$pid")"
-  [ "${comm##*/}" = "claude" ] && break
+  # Sessions started by the daemon run the versioned binary: .../claude/versions/2.1.319.
+  case "$comm" in claude|*/claude|*/claude/versions/*) break ;; esac
   pid=$ppid
 done
 [ "$pid" -gt 1 ] || { tty=-; pid=-; }
