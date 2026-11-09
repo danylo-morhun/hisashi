@@ -67,6 +67,55 @@ struct AppNotice: Equatable, Identifiable {
     var actions: [String] = []
     /// Stays until clicked or closed, like the system's persistent alert style.
     var persistent = false
+    /// The button just pressed; it turns into a check before the notice leaves.
+    var pressed: String?
+    /// Set while the notice animates away; how depends on why.
+    var leaving: NoticeExit?
+}
+
+/// How the shown notice came in: dropped from the camera, or risen from the deck below.
+enum NoticeEntrance: Equatable {
+    case drop, rise
+}
+
+/// Why a notice leaves, which picks its exit animation.
+enum NoticeExit: Equatable {
+    case open, close, press, timeout
+}
+
+/// Time left before a temporary notice hides. Hover pauses it, leaving resumes it.
+struct Countdown: Equatable {
+    let total: TimeInterval
+    var left: TimeInterval
+    /// Running since this moment; nil while paused.
+    var since: Date?
+
+    init(total: TimeInterval) {
+        self.total = total
+        left = total
+    }
+
+    func remaining(at now: Date) -> TimeInterval {
+        guard let since else { return left }
+        return max(0, left - now.timeIntervalSince(since))
+    }
+
+    /// 1 when fresh, 0 when it runs out.
+    func progress(at now: Date) -> Double { total > 0 ? remaining(at: now) / total : 0 }
+
+    func paused(at now: Date) -> Countdown {
+        var c = self
+        c.left = remaining(at: now)
+        c.since = nil
+        return c
+    }
+
+    func resumed(at now: Date) -> Countdown {
+        guard since == nil else { return self }
+        var c = self
+        c.since = now
+        return c
+    }
 }
 
 /// What the user did with a notice in the notch.
@@ -82,10 +131,37 @@ enum Notices {
     /// Most notices kept waiting behind the shown one.
     static let limit = 10
 
-    /// Adds a notice. The newest shows; temporary ones it covers are dropped,
-    /// persistent ones wait underneath.
+    /// Adds a notice on top of the deck. The newest shows, the others wait underneath.
+    /// One already in the deck comes back when Notification Center surfaces it again:
+    /// it is refreshed where it is, so it does not jump over the one being handled.
     static func add(_ notice: AppNotice, to queue: [AppNotice]) -> [AppNotice] {
-        Array((queue.filter { $0.persistent && $0.id != notice.id } + [notice]).suffix(limit))
+        if let i = queue.firstIndex(where: { $0.id == notice.id }) {
+            var q = queue
+            if q[i].pressed == nil, q[i].leaving == nil { q[i].actions = notice.actions }
+            return q
+        }
+        return Array((queue.filter { $0.leaving == nil } + [notice]).suffix(limit))
+    }
+
+    /// The system banner is gone. A temporary notice still waiting in the deck goes with it;
+    /// the shown one stays, only without buttons.
+    static func expire(_ id: String, in queue: [AppNotice]) -> [AppNotice] {
+        guard let i = queue.firstIndex(where: { $0.id == id }) else { return queue }
+        var q = queue
+        if i != q.count - 1, !q[i].persistent {
+            q.remove(at: i)
+        } else if q[i].pressed == nil {
+            q[i].actions = []
+        }
+        return q
+    }
+
+    /// Starts a notice's exit; it is removed once that has played.
+    static func leave(_ id: String, _ exit: NoticeExit, in queue: [AppNotice]) -> [AppNotice] {
+        guard let i = queue.firstIndex(where: { $0.id == id }) else { return queue }
+        var q = queue
+        q[i].leaving = exit
+        return q
     }
 
     /// Banner actions arrive as "Name:Mark as Completed\nTarget:…". Keeps the app's own buttons,
@@ -137,6 +213,7 @@ struct NotchState: Equatable {
     var hud: Hud?
     /// Waiting notices; the last one shows.
     var notices: [AppNotice] = []
+    var noticeEntrance = NoticeEntrance.drop
     var players: [NowPlaying] = []
     var selectedID: String?
 
@@ -173,7 +250,10 @@ enum NotchAction {
     case showHud(Hud)
     case dismissHud
     case notify(AppNotice)
+    /// Starts the exit animation; `dismissNotice` removes it once that has played.
+    case leaveNotice(String, NoticeExit)
     case dismissNotice(String)
+    case pressNotice(String, String)
     /// The system banner is gone, and with it the buttons.
     case expireNotice(String)
     case players([NowPlaying])
@@ -192,10 +272,16 @@ func reduce(_ state: NotchState, _ action: NotchAction) -> NotchState {
     case .dismissEvent: s.event = nil
     case .showHud(let hud): s.hud = hud
     case .dismissHud: s.hud = nil
-    case .notify(let notice): s.notices = Notices.add(notice, to: s.notices)
-    case .dismissNotice(let id): s.notices.removeAll { $0.id == id }
-    case .expireNotice(let id):
-        if let i = s.notices.firstIndex(where: { $0.id == id }) { s.notices[i].actions = [] }
+    case .notify(let notice):
+        if !s.notices.contains(where: { $0.id == notice.id }) { s.noticeEntrance = .drop }
+        s.notices = Notices.add(notice, to: s.notices)
+    case .dismissNotice(let id):
+        s.notices.removeAll { $0.id == id }
+        s.noticeEntrance = .rise
+    case .leaveNotice(let id, let exit): s.notices = Notices.leave(id, exit, in: s.notices)
+    case .pressNotice(let id, let title):
+        if let i = s.notices.firstIndex(where: { $0.id == id }) { s.notices[i].pressed = title }
+    case .expireNotice(let id): s.notices = Notices.expire(id, in: s.notices)
     case .players(let next):
         let before = s.nowPlaying
         // A player that just started takes over the panel.
@@ -232,19 +318,31 @@ enum Layout {
     static let openWidth: CGFloat = 580
     static let openBody: CGFloat = 176
     static let eventBody: CGFloat = 44
-    static let noticeWidth: CGFloat = 440
-    static let noticeBody: CGFloat = 60
+    static let noticeWidth: CGFloat = 480
+    static let noticeBody: CGFloat = 100
     /// Extra height for the row of app buttons.
-    static let noticeActions: CGFloat = 38
+    static let noticeActions: CGFloat = 48
+    /// A notice is a rounder island than the panel.
+    static let noticeRadius: CGFloat = 32
     /// Width added on each side of the camera for the closed live activity.
     static let activityEar: CGFloat = 38
     /// Width added on each side of the camera for volume and brightness.
     static let hudEar: CGFloat = 76
 
     static func size(_ state: NotchState, notch: CGSize) -> CGSize {
+        // The last notice shrinks back into the camera while its content plays the exit;
+        // with more waiting the island stays for the next one.
+        if state.mode == .notice, state.notice?.leaving != nil, state.notices.count == 1 {
+            return size(.compact, activity: state.hasActivity, notch: notch)
+        }
         var s = size(state.mode, activity: state.hasActivity, notch: notch)
         if state.mode == .notice, state.notice?.actions.isEmpty == false { s.height += noticeActions }
         return s
+    }
+
+    static func bottomRadius(_ state: NotchState, notch: CGSize) -> CGFloat {
+        if state.mode == .notice, state.notice?.leaving == nil || state.notices.count > 1 { return noticeRadius }
+        return bottomRadius(height: size(state, notch: notch).height, notch: notch)
     }
 
     static func size(_ mode: NotchMode, activity: Bool, notch: CGSize) -> CGSize {
