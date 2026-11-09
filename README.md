@@ -15,6 +15,7 @@ shortcut set to ctrl option command f19 (keyboard shortcuts, mission control).
 
 claude code shows while it works: a turning spark and the time beside the camera,\
 the current step in the open notch, questions and finished replies as notices.\
+a question with one choice to make is answered right in the notch.\
 point its hooks at `scripts/claude-hook.sh` (userpromptsubmit, pretooluse,\
 posttooluse, notification, stop, sessionend).
 
