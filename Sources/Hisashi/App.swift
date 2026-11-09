@@ -121,13 +121,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Takes the system banners into the notch. Without Accessibility the system keeps showing them.
     private func startNotices() {
         guard let model else { return }
-        banners.onNotice = { notice in
-            model.send(.notify(notice))
+        banners.onNotice = { [weak self] notice in
+            let now = Date()
+            let route = Reminders.route(notice, in: model.state.today, at: now)
+            model.send(.banner(notice, route, at: now))
+            // Not shown at all, so a persistent alert would wait hidden forever.
+            if route == .drop, notice.persistent { self?.banners.perform(.close, on: notice) }
             model.send(.remember(HistoryItem(id: notice.id, app: notice.app, title: notice.title,
                                              body: notice.detail, date: Date(), image: notice.image)))
         }
         banners.onExpire = { model.send(.expireNotice($0)) }
         model.noticeEffect = { [weak self] notice, effect in
+            if notice.id.hasPrefix(Today.timerPrefix) {
+                if effect == .press(Today.extendLabel) { model.send(.startTimer(5 * 60, at: Date())) }
+                return
+            }
+            if effect == .press(Reminders.joinLabel), let event = Reminders.event(of: notice, in: model.state.today, at: Date()) {
+                TodayLinks.open(event)
+                return
+            }
             // A Claude notice opens the Terminal tab of its session; closing it needs nothing more.
             // A picked choice answers Claude's question; anything else leaves it to the terminal.
             if let id = Agents.session(ofNotice: notice.id) {
