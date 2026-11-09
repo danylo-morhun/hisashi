@@ -74,7 +74,11 @@ struct NotchView: View {
     private func content(_ mode: NotchMode) -> some View {
         switch mode {
         case .compact:
-            if let np = model.state.activity {
+            if let agent = model.state.agent {
+                AgentActivity(agent: agent, working: model.state.agents.filter(\.working).count, notch: model.notch)
+                    .frame(width: Layout.size(model.state, notch: model.notch).width)
+                    .transition(.activityFade)
+            } else if let np = model.state.activity {
                 let width = Layout.size(.compact, activity: true, notch: model.notch).width
                 CompactActivity(nowPlaying: np, notch: model.notch)
                     .frame(width: width)
@@ -159,6 +163,13 @@ struct OpenPanel: View {
             HStack(spacing: 0) {
                 TabBar(selected: model.state.tab) { model.send(.select($0)) }
                 Spacer(minLength: model.notch.width + 16)
+                if let agent = model.state.agent {
+                    AgentStatus(agent: agent, showsProject: model.state.agents.filter(\.working).count > 1)
+                        .padding(.trailing, 8)
+                        .contentShape(Rectangle())
+                        .onTapGesture { Terminals.focus(tty: agent.tty) }
+                        .transition(.opacity)
+                }
                 IconButton(symbol: model.state.isPinned ? "pin.fill" : "pin",
                            label: "Pin open", isOn: model.state.isPinned) { model.send(.togglePin) }
             }
