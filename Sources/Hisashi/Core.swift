@@ -1,3 +1,4 @@
+import CoreText
 import Foundation
 
 // Pure rules: state, actions, reducer, layout. No AppKit, no side effects.
@@ -118,6 +119,43 @@ struct Countdown: Equatable {
         var c = self
         c.since = now
         return c
+    }
+}
+
+/// A notice's arrangement, worked out once from its text.
+struct NoticeLayout: Equatable {
+    /// Width of each wing beside the camera.
+    let wing: CGFloat
+    /// What the left wing says: the title, or the app when the title is too long.
+    let label: String
+    /// The title moved under the camera, as the first line.
+    let titleBelow: Bool
+    let bodyLines: Int
+
+    /// Height of what sits under the camera, buttons left out.
+    var belowHeight: CGFloat {
+        let lines = CGFloat(bodyLines + (titleBelow ? 1 : 0))
+        return lines > 0 ? lines * Layout.noticeLine + Layout.noticeBottom : 0
+    }
+}
+
+/// Width of a single line of system text, the way the notch draws it.
+enum TextWidth {
+    enum Weight { case regular, semibold }
+
+    static func of(_ text: String, size: CGFloat, weight: Weight = .regular) -> CGFloat {
+        guard !text.isEmpty else { return 0 }
+        let attributed = CFAttributedStringCreate(nil, text as CFString, [kCTFontAttributeName: font(size, weight)] as CFDictionary)!
+        return ceil(CGFloat(CTLineGetTypographicBounds(CTLineCreateWithAttributedString(attributed), nil, nil, nil)))
+    }
+
+    private static func font(_ size: CGFloat, _ weight: Weight) -> CTFont {
+        let base = CTFontCreateUIFontForLanguage(.system, size, nil)!
+        guard weight == .semibold else { return base }
+        let traits = [kCTFontWeightTrait: 0.3] as CFDictionary
+        let descriptor = CTFontDescriptorCreateCopyWithAttributes(
+            CTFontCopyFontDescriptor(base), [kCTFontTraitsAttribute: traits] as CFDictionary)
+        return CTFontCreateWithFontDescriptor(descriptor, size, nil)
     }
 }
 
@@ -336,16 +374,18 @@ enum Layout {
     static let openBody: CGFloat = 176
     static let eventBody: CGFloat = 44
     /// A notice spreads into the menu bar on both sides of the camera; each wing holds
-    /// the icon and title on the left, the time on the right.
-    static let noticeWing: CGFloat = 117
+    /// the icon and title on the left, the time on the right. They grow with the title, within limits.
+    static let noticeWingMin: CGFloat = 117
+    static let noticeWingMax: CGFloat = 170
+    /// Outer margin, and where the title and everything under it start.
+    static let noticeEdge: CGFloat = 14
+    static let noticeTextStart: CGFloat = 38
     /// Body text sits under the camera; one line is this tall.
     static let noticeLine: CGFloat = 16
     static let noticeBottom: CGFloat = 12
     /// Height the row of app buttons adds, gap above included.
     static let noticeActions: CGFloat = 34
     static let noticeRadius: CGFloat = 18
-    /// Width left for the body: from the title's edge to the right margin.
-    static let noticeTextInset: CGFloat = 38 + 14
     /// Width added on each side of the camera for the closed live activity.
     static let activityEar: CGFloat = 38
     /// Width added on each side of the camera for volume and brightness.
@@ -357,15 +397,15 @@ enum Layout {
         if state.mode == .notice, state.notice?.leaving != nil, state.notices.count == 1 {
             return size(.compact, activity: state.hasActivity, notch: notch)
         }
-        var s = size(state.mode, activity: state.hasActivity, notch: notch)
         if state.mode == .notice, let notice = state.notice {
-            let lines = Notices.bodyLines(notice.detail, width: s.width - noticeTextInset)
-            if lines > 0 { s.height += CGFloat(lines) * noticeLine + noticeBottom }
+            let layout = Notices.layout(notice, notch: notch)
+            var height = notch.height + layout.belowHeight
             if Notices.showsActions(notice, hovering: state.isHovering) {
-                s.height += noticeActions + (lines == 0 ? noticeBottom : 0)
+                height += noticeActions + (layout.belowHeight == 0 ? noticeBottom : 0)
             }
+            return CGSize(width: notch.width + layout.wing * 2, height: height)
         }
-        return s
+        return size(state.mode, activity: state.hasActivity, notch: notch)
     }
 
     static func bottomRadius(_ state: NotchState, notch: CGSize) -> CGFloat {
@@ -379,7 +419,7 @@ enum Layout {
             return activity ? CGSize(width: notch.width + activityEar * 2, height: notch.height) : notch
         case .event: return CGSize(width: max(notch.width + 200, 380), height: notch.height + eventBody)
         case .hud: return CGSize(width: notch.width + hudEar * 2, height: notch.height)
-        case .notice: return CGSize(width: notch.width + noticeWing * 2, height: notch.height)
+        case .notice: return CGSize(width: notch.width + noticeWingMin * 2, height: notch.height)
         case .open: return CGSize(width: openWidth, height: notch.height + openBody)
         }
     }
