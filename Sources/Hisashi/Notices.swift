@@ -24,20 +24,35 @@ final class BannerWatch {
     private var banners: [String: AXUIElement] = [:]
     /// Notifications seen in the open Notification Center; never shown as new.
     private var old = Set<String>()
-    private var launchWatch: Any?
+    /// Fires when the watched Notification Center process exits.
+    private var exitWatch: DispatchSourceProcess?
 
     /// False without the Accessibility permission.
     func start() -> Bool {
         guard AXIsProcessTrusted() else { return false }
         attach()
-        // Notification Center can restart; follow it.
-        launchWatch = NSWorkspace.shared.notificationCenter.addObserver(
-            forName: NSWorkspace.didLaunchApplicationNotification, object: nil, queue: .main
-        ) { [weak self] note in
-            let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
-            if app?.bundleIdentifier == Self.bundleID { self?.attach() }
-        }
         return true
+    }
+
+    /// Notification Center can restart, and launch notices do not cover it.
+    /// The kernel says when the process exits; then wait for the new one and attach to it.
+    private func watchExit() {
+        exitWatch?.cancel()
+        let source = DispatchSource.makeProcessSource(identifier: pid, eventMask: .exit, queue: .main)
+        source.setEventHandler { [weak self] in self?.reattach(tries: 20) }
+        source.resume()
+        exitWatch = source
+    }
+
+    private func reattach(tries: Int) {
+        guard tries > 0 else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            guard let self else { return }
+            let next = NSRunningApplication.runningApplications(withBundleIdentifier: Self.bundleID).first
+            guard let next, next.processIdentifier != self.pid else { return self.reattach(tries: tries - 1) }
+            // Give it a moment to build its windows before listening.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { self.attach() }
+        }
     }
 
     /// Gives back any banner window still hidden, so nothing stays invisible after the notch quits.
@@ -90,6 +105,7 @@ final class BannerWatch {
         }
         CFRunLoopAddSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(created), .defaultMode)
         observer = created
+        watchExit()
         // A banner window left hidden by an earlier run would keep its banners invisible.
         for window in windows() {
             if let p = position(window), p.y >= Self.offscreenY { setPosition(window, CGPoint(x: p.x, y: 0)) }
