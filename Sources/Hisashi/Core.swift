@@ -71,6 +71,9 @@ struct AppNotice: Equatable, Identifiable {
     var pressed: String?
     /// Set while the notice animates away; how depends on why.
     var leaving: NoticeExit?
+
+    /// Subtitle and body as one line of text under the title.
+    var detail: String { [subtitle, body].filter { !$0.isEmpty }.joined(separator: " · ") }
 }
 
 /// How the shown notice came in: dropped from the camera, or risen from the queue below.
@@ -162,6 +165,20 @@ enum Notices {
         var q = queue
         q[i].leaving = exit
         return q
+    }
+
+    /// Lines the body takes under the camera, at most two. Estimated from its length so the
+    /// size stays a pure function of the state; the view clamps to the same count.
+    static func bodyLines(_ body: String, width: CGFloat) -> Int {
+        guard !body.isEmpty, width > 0 else { return 0 }
+        let averageGlyph: CGFloat = 6.2
+        return CGFloat(body.count) * averageGlyph > width ? 2 : 1
+    }
+
+    /// Buttons wait until they are wanted: always on a persistent alert, on hover otherwise,
+    /// and while a pressed one shows its check.
+    static func showsActions(_ notice: AppNotice, hovering: Bool) -> Bool {
+        !notice.actions.isEmpty && (notice.persistent || hovering || notice.pressed != nil)
     }
 
     /// Banner actions arrive as "Name:Mark as Completed\nTarget:…". Keeps the app's own buttons,
@@ -318,12 +335,17 @@ enum Layout {
     static let openWidth: CGFloat = 580
     static let openBody: CGFloat = 176
     static let eventBody: CGFloat = 44
-    static let noticeWidth: CGFloat = 480
-    static let noticeBody: CGFloat = 100
-    /// Extra height for the row of app buttons.
-    static let noticeActions: CGFloat = 48
-    /// A notice is a rounder island than the panel.
-    static let noticeRadius: CGFloat = 32
+    /// A notice spreads into the menu bar on both sides of the camera; each wing holds
+    /// the icon and title on the left, the time on the right.
+    static let noticeWing: CGFloat = 117
+    /// Body text sits under the camera; one line is this tall.
+    static let noticeLine: CGFloat = 16
+    static let noticeBottom: CGFloat = 12
+    /// Height the row of app buttons adds, gap above included.
+    static let noticeActions: CGFloat = 34
+    static let noticeRadius: CGFloat = 18
+    /// Width left for the body: from the title's edge to the right margin.
+    static let noticeTextInset: CGFloat = 38 + 14
     /// Width added on each side of the camera for the closed live activity.
     static let activityEar: CGFloat = 38
     /// Width added on each side of the camera for volume and brightness.
@@ -336,7 +358,13 @@ enum Layout {
             return size(.compact, activity: state.hasActivity, notch: notch)
         }
         var s = size(state.mode, activity: state.hasActivity, notch: notch)
-        if state.mode == .notice, state.notice?.actions.isEmpty == false { s.height += noticeActions }
+        if state.mode == .notice, let notice = state.notice {
+            let lines = Notices.bodyLines(notice.detail, width: s.width - noticeTextInset)
+            if lines > 0 { s.height += CGFloat(lines) * noticeLine + noticeBottom }
+            if Notices.showsActions(notice, hovering: state.isHovering) {
+                s.height += noticeActions + (lines == 0 ? noticeBottom : 0)
+            }
+        }
         return s
     }
 
@@ -351,7 +379,7 @@ enum Layout {
             return activity ? CGSize(width: notch.width + activityEar * 2, height: notch.height) : notch
         case .event: return CGSize(width: max(notch.width + 200, 380), height: notch.height + eventBody)
         case .hud: return CGSize(width: notch.width + hudEar * 2, height: notch.height)
-        case .notice: return CGSize(width: max(notch.width + 160, noticeWidth), height: notch.height + noticeBody)
+        case .notice: return CGSize(width: notch.width + noticeWing * 2, height: notch.height)
         case .open: return CGSize(width: openWidth, height: notch.height + openBody)
         }
     }
