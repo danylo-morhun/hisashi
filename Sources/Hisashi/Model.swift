@@ -14,6 +14,14 @@ final class NotchModel {
     var clearCenter: (String?) -> Void = { _ in }
     /// Set by the shell: opens the app behind a listed notification.
     var openHistory: (HistoryItem) -> Void = { _ in }
+    /// Set by the shell: opens an event of the agenda.
+    var openEvent: (DayEvent) -> Void = { _ in }
+    /// Set by the shell: the sound of the timer running out.
+    var timerDone: () -> Void = {}
+    /// Set by the shell: typing the timer's minutes started or ended.
+    var entryChanged: (Bool) -> Void = { _ in }
+    @ObservationIgnored private var timerTask: Task<Void, Never>?
+    @ObservationIgnored private var timerSeen: Countdown?
     private var dismissTask: Task<Void, Never>?
     private var hudTask: Task<Void, Never>?
     /// Time left on the shown temporary notice; the view draws it as a ring.
@@ -29,11 +37,31 @@ final class NotchModel {
         let next = reduce(state, action)
         // Every notice that just started leaving is removed once its exit has played.
         let leaving = next.notices.filter { n in n.leaving != nil && state.notices.contains { $0.id == n.id && $0.leaving == nil } }
+        let timerFinished = next.notices.contains { n in n.id.hasPrefix(Today.timerPrefix) && !state.notices.contains { $0.id == n.id } }
+        let entryFlipped = (next.today.entry != nil) != (state.today.entry != nil)
         if next != state { state = next }
+        if entryFlipped { entryChanged(state.today.entry != nil) }
         if case .show = action { scheduleDismiss() }
         if case .showHud = action { scheduleHudDismiss() }
         for notice in leaving { finishLeaving(notice.id) }
+        if timerFinished { timerDone() }
         syncNoticeClock()
+        syncTimer()
+    }
+
+    /// Wakes exactly when the running timer ends; the regular tick is too coarse for that.
+    private func syncTimer() {
+        guard state.today.timer != timerSeen else { return }
+        timerSeen = state.today.timer
+        timerTask?.cancel()
+        timerTask = nil
+        guard let timer = timerSeen, timer.since != nil else { return }
+        let left = timer.remaining(at: Date())
+        timerTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(left + 0.02))
+            guard !Task.isCancelled else { return }
+            self?.send(.tick(Date()))
+        }
     }
 
     /// Click, button or close: the system notification gets the same, the notice plays its exit.
