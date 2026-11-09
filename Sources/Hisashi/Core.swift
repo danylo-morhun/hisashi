@@ -205,12 +205,26 @@ enum Notices {
         return q
     }
 
-    /// Lines the body takes under the camera, at most two. Estimated from its length so the
-    /// size stays a pure function of the state; the view clamps to the same count.
-    static func bodyLines(_ body: String, width: CGFloat) -> Int {
-        guard !body.isEmpty, width > 0 else { return 0 }
-        let averageGlyph: CGFloat = 6.2
-        return CGFloat(body.count) * averageGlyph > width ? 2 : 1
+    /// Where a notice's parts go and how wide the wings are. The wings grow with the title
+    /// up to a limit; a title that still does not fit leaves the wing to the app's name and
+    /// becomes the first line under the camera.
+    static func layout(_ notice: AppNotice, notch: CGSize) -> NoticeLayout {
+        let wingChrome = Layout.noticeTextStart + 10
+        func need(_ text: String) -> CGFloat { wingChrome + TextWidth.of(text, size: 13, weight: .semibold) }
+        let title = notice.title.isEmpty ? notice.app : notice.title
+        let fits = need(title) <= Layout.noticeWingMax
+        let label = fits ? title : notice.app
+        let wing = min(Layout.noticeWingMax, max(Layout.noticeWingMin, need(label)))
+        let textWidth = notch.width + wing * 2 - Layout.noticeTextStart - Layout.noticeEdge
+        let detail = notice.detail
+        let lines = detail.isEmpty ? 0 : TextWidth.of(detail, size: 12) > textWidth ? 2 : 1
+        return NoticeLayout(wing: wing, label: label, titleBelow: !fits && !notice.title.isEmpty, bodyLines: lines)
+    }
+
+    /// Calls ring through their own interface, and a banner with no title or body is drawn
+    /// by its app: both stay with the system, which shows them itself.
+    static func passesThrough(app: String, title: String, body: String) -> Bool {
+        ["FaceTime", "Phone"].contains(app) || (title.isEmpty && body.isEmpty)
     }
 
     /// Buttons wait until they are wanted: always on a persistent alert, on hover otherwise,
