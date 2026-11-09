@@ -24,6 +24,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var keys: KeyTap?
     private let banners = BannerWatch()
     private let claude = ClaudeWatch()
+    private let calendar = CalendarWatch()
+    private let weather = WeatherWatch()
+    private let power = PowerWatch()
+    private let entry = KeyEntry()
     private var store: NoticeStore?
     private var termination: DispatchSourceSignal?
 
@@ -46,6 +50,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         keys?.start()
         startNotices()
         startClaude()
+        startToday()
         // Dev aid: `open build/Hisashi.app --args --pinned` starts open.
         if CommandLine.arguments.contains("--pinned") { model?.send(.togglePin) }
         // Dev aid: `--hud volume|brightness 0.5` shows the HUD at that level.
@@ -72,7 +77,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         monitors = MouseMonitors.install(onMove: { [weak self] in self?.mouseMoved($0) },
-                                         onOutsideClick: { [weak self] in self?.model?.send(.unpin) })
+                                         onOutsideClick: { [weak self] in
+                                             self?.model?.send(.unpin)
+                                             self?.model?.send(.endEntry)
+                                         })
         NotificationCenter.default.addObserver(self, selector: #selector(screensChanged),
                                                name: NSApplication.didChangeScreenParametersNotification, object: nil)
     }
@@ -90,6 +98,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         claude.onReport = { model.send(.agent($0, at: Date())) }
         claude.sessions = { model.state.agents }
         claude.start()
+    }
+
+    /// Calendar, weather and battery.
+    private func startToday() {
+        guard let model else { return }
+        calendar.onAccess = { model.send(.calendarAccess($0)) }
+        calendar.onEvents = { model.send(.events($0)) }
+        if !CommandLine.arguments.contains("--sample-day") { calendar.start() }
+        weather.onWeather = { model.send(.weather($0)) }
+        weather.start()
+        power.onChange = { model.send(.power($0)) }
+        power.start()
+        model.openEvent = { TodayLinks.open($0) }
+        model.timerDone = { NSSound(named: "Glass")?.play() }
+        entry.onKey = { model.send(.entryKey($0, at: Date())) }
+        model.entryChanged = { [weak self] typing in
+            if typing { self?.entry.start() } else { self?.entry.stop() }
+        }
     }
 
     /// Takes the system banners into the notch. Without Accessibility the system keeps showing them.
