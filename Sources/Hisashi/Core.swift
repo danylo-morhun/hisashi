@@ -385,7 +385,14 @@ struct NotchState: Equatable {
         nowPlaying?.isPlaying == true ? nowPlaying : players.first { $0.isPlaying }
     }
 
-    var hasActivity: Bool { activity != nil }
+    /// Claude Code sessions reported by their hooks.
+    var agents: [AgentSession] = []
+
+    /// The working Claude session the notch shows, if any.
+    var agent: AgentSession? { Agents.shown(agents) }
+
+    /// Something to show beside the camera while closed: Claude at work or music playing.
+    var hasActivity: Bool { agent != nil || activity != nil }
 
     var notice: AppNotice? { notices.last }
 
@@ -423,6 +430,8 @@ enum NotchAction {
     case players([NowPlaying])
     case selectPlayer(String)
     case togglePlayback(at: Date)
+    /// A Claude Code hook spoke.
+    case agent(AgentReport, at: Date)
 }
 
 func reduce(_ state: NotchState, _ action: NotchAction) -> NotchState {
@@ -472,6 +481,11 @@ func reduce(_ state: NotchState, _ action: NotchAction) -> NotchState {
             s.players[i].timestamp = now
             s.players[i].isPlaying.toggle()
         }
+    case .agent(let report, let now):
+        for id in Agents.stale(s.notices, after: report) { s.notices = Notices.leave(id, .close, in: s.notices) }
+        let (sessions, notice) = Agents.apply(report, to: s.agents, at: now)
+        s.agents = sessions
+        if let notice { s = reduce(s, .notify(notice)) }
     }
     return s
 }
@@ -502,6 +516,8 @@ enum Layout {
     static let noticeRadius: CGFloat = 18
     /// Width added on each side of the camera for the closed live activity.
     static let activityEar: CGFloat = 38
+    /// Wider for Claude at work: the elapsed time needs room once it passes ten minutes.
+    static let agentEar: CGFloat = 44
     /// Width added on each side of the camera for volume and brightness.
     static let hudEar: CGFloat = 76
 
@@ -509,7 +525,7 @@ enum Layout {
         // The last notice shrinks back into the camera while its content plays the exit;
         // with more waiting the island stays for the next one.
         if state.mode == .notice, state.notice?.leaving != nil, state.notices.count == 1 {
-            return size(.compact, activity: state.hasActivity, notch: notch)
+            return compactSize(state, notch: notch)
         }
         if state.mode == .notice, let notice = state.notice {
             let layout = Notices.layout(notice, notch: notch)
@@ -519,7 +535,14 @@ enum Layout {
             }
             return CGSize(width: notch.width + layout.wing * 2, height: height)
         }
+        if state.mode == .compact { return compactSize(state, notch: notch) }
         return size(state.mode, activity: state.hasActivity, notch: notch)
+    }
+
+    /// Closed: Claude at work takes the wider ears, else music its own.
+    static func compactSize(_ state: NotchState, notch: CGSize) -> CGSize {
+        if state.agent != nil { return CGSize(width: notch.width + agentEar * 2, height: notch.height) }
+        return size(.compact, activity: state.hasActivity, notch: notch)
     }
 
     static func bottomRadius(_ state: NotchState, notch: CGSize) -> CGFloat {
