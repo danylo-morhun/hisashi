@@ -118,7 +118,14 @@ final class BannerWatch {
         // The user opened Notification Center: it lives in the same window as the banners.
         // A call or another banner the notch cannot draw needs the system's own window too.
         // Either way give the window back and take nothing from it while it lasts.
-        let yield = dialogs.contains { isPanel($0, depth: 0) } || found.contains { passesThrough($0) }
+        let panelOpen = dialogs.contains { isPanel($0, depth: 0) }
+        // Opened by the notch itself to clear: keep it out of sight and do the job.
+        if panelOpen, let job = clearing {
+            for window in dialogs { hideWindow(window) }
+            if !job.done { finishClear(job, in: dialogs) }
+            return
+        }
+        let yield = panelOpen || found.contains { passesThrough($0) }
         if yield {
             for window in dialogs {
                 if let p = position(window), p.y >= Self.offscreenY { setPosition(window, CGPoint(x: p.x, y: 0)) }
@@ -174,9 +181,97 @@ final class BannerWatch {
     /// Moves the banner's window far off screen, before it slides in.
     private func hide(_ banner: AXUIElement) {
         guard let value = attribute(banner, kAXWindowAttribute) else { return }
-        let window = value as! AXUIElement
+        hideWindow(value as! AXUIElement)
+    }
+
+    private func hideWindow(_ window: AXUIElement) {
         guard let p = position(window), p.y < Self.offscreenY else { return }
         setPosition(window, CGPoint(x: p.x, y: Self.offscreenY))
+    }
+
+    // Clearing. Only the open Notification Center panel can clear, and nothing public opens it.
+    // Its keyboard shortcut (System Settings, Keyboard Shortcuts, Mission Control, "Show
+    // Notification Centre") set to ctrl-option-command-F19 opens it without touching the mouse;
+    // the panel is moved off screen as it appears, the stack's Clear All pressed, and the same
+    // shortcut closes it again. Without the shortcut nothing opens and only the notch list clears.
+
+    private struct ClearJob {
+        /// The app whose stack to clear; nil clears everything.
+        let app: String?
+        /// The panel was already open, so it must stay open afterwards.
+        let wasOpen: Bool
+        var done = false
+    }
+
+    private var clearing: ClearJob?
+
+    func clear(app: String?) {
+        guard pid != 0, clearing == nil else { return }
+        let dialogs = windows().filter { string($0, kAXSubroleAttribute) == "AXSystemDialog" }
+        if dialogs.contains(where: { isPanel($0, depth: 0) }) {
+            // The user has it open: clear in place, in sight.
+            finishClear(ClearJob(app: app, wasOpen: true), in: dialogs)
+            return
+        }
+        clearing = ClearJob(app: app, wasOpen: false)
+        Self.pressShortcut()
+        // Give up after a while: no shortcut set, or nothing to clear. Close what was opened.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+            guard let self, let job = self.clearing, !job.done else { return }
+            self.clearing?.done = true
+            if self.windows().contains(where: { self.isPanel($0, depth: 0) }) { self.closePanel() } else { self.clearing = nil }
+        }
+    }
+
+    private func finishClear(_ job: ClearJob, in dialogs: [AXUIElement]) {
+        let target: AXUIElement?
+        let action: String?
+        if let app = job.app {
+            let stacks = dialogs.flatMap { scan($0, depth: 0) }
+            target = stacks.first { (string($0, kAXDescriptionAttribute) ?? "").hasPrefix(app + ",") }
+            action = target.flatMap { actionNames($0).first { $0.hasPrefix("Name:Clear All") || $0.hasPrefix("Name:Close") } }
+        } else {
+            target = dialogs.lazy.compactMap { self.find($0, description: "Clear All", depth: 0) }.first
+            action = target == nil ? nil : kAXPressAction as String
+        }
+        // The list may still be building; the next layout change tries again.
+        guard let target, let action else { return }
+        AXUIElementPerformAction(target, action as CFString)
+        guard !job.wasOpen else { return }
+        clearing?.done = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in self?.closePanel() }
+    }
+
+    /// Closes the panel the notch opened. Never leaves it open and hidden: if it did not
+    /// close, it is handed back in sight.
+    private func closePanel() {
+        Self.pressShortcut()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+            guard let self else { return }
+            self.clearing = nil
+            for window in self.windows() where self.isPanel(window, depth: 0) {
+                if let p = self.position(window), p.y >= Self.offscreenY { self.setPosition(window, CGPoint(x: p.x, y: 0)) }
+            }
+        }
+    }
+
+    private func find(_ element: AXUIElement, description: String, depth: Int) -> AXUIElement? {
+        if role(element) == kAXButtonRole as String, string(element, kAXDescriptionAttribute) == description { return element }
+        guard depth < 8 else { return nil }
+        for child in children(element) {
+            if let hit = find(child, description: description, depth: depth + 1) { return hit }
+        }
+        return nil
+    }
+
+    /// ctrl-option-command-F19, the shortcut set for Show Notification Centre.
+    private static func pressShortcut() {
+        let source = CGEventSource(stateID: .privateState)
+        for down in [true, false] {
+            guard let event = CGEvent(keyboardEventSource: source, virtualKey: 80, keyDown: down) else { continue }
+            event.flags = [.maskControl, .maskAlternate, .maskCommand, .maskSecondaryFn]
+            event.post(tap: .cghidEventTap)
+        }
     }
 
     /// The open panel has an Edit Widgets button; a window with only banners does not.
