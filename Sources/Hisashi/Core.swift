@@ -215,10 +215,18 @@ struct NoticeLayout: Equatable {
 enum TextWidth {
     enum Weight { case regular, semibold }
 
+    /// Layout asks on every mouse move while a notice shows; the same text is measured once.
+    private static var measured: [String: CGFloat] = [:]
+
     static func of(_ text: String, size: CGFloat, weight: Weight = .regular) -> CGFloat {
         guard !text.isEmpty else { return 0 }
+        let key = "\(size)\(weight)\u{1F}" + text
+        if let hit = measured[key] { return hit }
         let attributed = CFAttributedStringCreate(nil, text as CFString, [kCTFontAttributeName: font(size, weight)] as CFDictionary)!
-        return ceil(CGFloat(CTLineGetTypographicBounds(CTLineCreateWithAttributedString(attributed), nil, nil, nil)))
+        let width = ceil(CGFloat(CTLineGetTypographicBounds(CTLineCreateWithAttributedString(attributed), nil, nil, nil)))
+        if measured.count > 200 { measured.removeAll() }
+        measured[key] = width
+        return width
     }
 
     private static func font(_ size: CGFloat, _ weight: Weight) -> CTFont {
