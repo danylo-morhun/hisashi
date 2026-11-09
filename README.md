@@ -19,6 +19,11 @@ questions with single choices are answered right in the notch, one after another
 point its hooks at `scripts/claude-hook.sh` (userpromptsubmit, pretooluse,\
 posttooluse, notification, stop, sessionend).
 
+the today tab shows the day's calendar, weather, battery and a timer.\
+one event gets one notification, however many apps announce it.\
+it needs calendar access. weather follows location access; without it, put a city in\
+`~/Library/Application Support/Hisashi/config.json`: `{"city": "..."}`.
+
 early. the shell works, the tabs come next.
 
 `scripts/run.sh` builds and launches it. needs command line tools, not xcode.
