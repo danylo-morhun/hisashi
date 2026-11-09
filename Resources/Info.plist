@@ -12,6 +12,9 @@
     <key>LSUIElement</key><true/>
     <key>NSHighResolutionCapable</key><true/>
     <key>NSAppleEventsUsageDescription</key><string>Hisashi brings the Terminal tab of a Claude Code session to the front when you click its notice.</string>
+    <key>NSCalendarsFullAccessUsageDescription</key><string>Hisashi shows today's events in the notch and reminds you of them.</string>
+    <key>NSLocationUsageDescription</key><string>Hisashi shows the weather where you are.</string>
+    <key>NSLocationWhenInUseUsageDescription</key><string>Hisashi shows the weather where you are.</string>
     <key>NSAudioCaptureUsageDescription</key><string>Hisashi listens to what plays to draw the equalizer. Nothing is recorded or stored.</string>
 </dict>
 </plist>
