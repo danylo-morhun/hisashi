@@ -203,11 +203,23 @@ struct NoticeLayout: Equatable {
     /// The title moved under the camera, as the first line.
     let titleBelow: Bool
     let bodyLines: Int
+    /// Room kept for the app's buttons at the right end of the text, gap included.
+    /// Kept even while they hide, so the text does not rewrap when they show.
+    let buttons: CGFloat
 
-    /// Height of what sits under the camera, buttons left out.
+    /// Height of the message under the camera (the title when there is no body). With buttons
+    /// beside it, never lower than a button, so the button does not reach above the text.
+    var messageHeight: CGFloat {
+        guard bodyLines > 0 || titleBelow else { return 0 }
+        let lines = CGFloat(max(bodyLines, 1)) * Layout.noticeLine
+        return buttons > 0 ? max(lines, Layout.noticeButton) : lines
+    }
+
+    /// Height of what sits under the camera; a row of buttons with no text is left out.
     var belowHeight: CGFloat {
-        let lines = CGFloat(bodyLines + (titleBelow ? 1 : 0))
-        return lines > 0 ? lines * Layout.noticeLine + Layout.noticeBottom : 0
+        guard messageHeight > 0 else { return 0 }
+        let title = titleBelow && bodyLines > 0 ? Layout.noticeLine : 0
+        return title + messageHeight + Layout.noticeBottom
     }
 }
 
@@ -295,10 +307,21 @@ enum Notices {
         let fits = need(title) <= Layout.noticeWingMax
         let label = fits ? title : notice.app
         let wing = min(Layout.noticeWingMax, max(Layout.noticeWingMin, need(label)))
-        let textWidth = notch.width + wing * 2 - Layout.noticeTextStart - Layout.noticeEdge
+        let buttons = buttonsWidth(notice.actions)
+        let textWidth = notch.width + wing * 2 - Layout.noticeTextStart - Layout.noticeEdge - buttons
         let detail = notice.detail
         let lines = detail.isEmpty ? 0 : TextWidth.of(detail, size: 12) > textWidth ? 2 : 1
-        return NoticeLayout(wing: wing, label: label, titleBelow: !fits && !notice.title.isEmpty, bodyLines: lines)
+        return NoticeLayout(wing: wing, label: label, titleBelow: !fits && !notice.title.isEmpty,
+                            bodyLines: lines, buttons: buttons)
+    }
+
+    /// Room the buttons take beside the text, gap before them included. Measured a little
+    /// bold so they always fit; past the limit the rest go into Options.
+    static func buttonsWidth(_ actions: [String]) -> CGFloat {
+        guard !actions.isEmpty else { return 0 }
+        let capsules = actions.map { TextWidth.of($0, size: 11.5, weight: .semibold) + 22 }
+        let row = capsules.reduce(0, +) + CGFloat(actions.count - 1) * 6
+        return min(row, Layout.noticeButtonsMax) + 10
     }
 
     /// Calls ring through their own interface, and a banner with no title or body is drawn
@@ -511,8 +534,12 @@ enum Layout {
     /// Body text sits under the camera; one line is this tall.
     static let noticeLine: CGFloat = 16
     static let noticeBottom: CGFloat = 12
-    /// Height the row of app buttons adds, gap above included.
+    /// Height the row of app buttons adds when there is no text to sit beside, gap above included.
     static let noticeActions: CGFloat = 34
+    /// Height of one of the app's buttons.
+    static let noticeButton: CGFloat = 24
+    /// Widest the buttons get beside the text.
+    static let noticeButtonsMax: CGFloat = 160
     static let noticeRadius: CGFloat = 18
     /// Width added on each side of the camera for the closed live activity.
     static let activityEar: CGFloat = 38
@@ -530,8 +557,9 @@ enum Layout {
         if state.mode == .notice, let notice = state.notice {
             let layout = Notices.layout(notice, notch: notch)
             var height = notch.height + layout.belowHeight
-            if Notices.showsActions(notice, hovering: state.isHovering) {
-                height += noticeActions + (layout.belowHeight == 0 ? noticeBottom : 0)
+            // Buttons sit at the end of the text; only with no text do they need a row.
+            if layout.belowHeight == 0, Notices.showsActions(notice, hovering: state.isHovering) {
+                height += noticeActions + noticeBottom
             }
             return CGSize(width: notch.width + layout.wing * 2, height: height)
         }
