@@ -13,20 +13,19 @@ struct NoticeBanner: View {
     let act: (NoticeEffect) -> Void
     @State private var arrived = false
 
-    private let edge: CGFloat = 14
-    private let textStart: CGFloat = 38
+    private let edge = Layout.noticeEdge
 
     var body: some View {
-        let width = notch.width + Layout.noticeWing * 2
-        let lines = Notices.bodyLines(notice.detail, width: width - Layout.noticeTextInset)
+        let layout = Notices.layout(notice, notch: notch)
+        let width = notch.width + layout.wing * 2
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 0) {
-                leftWing
-                    .frame(width: Layout.noticeWing, alignment: .leading)
+                leftWing(layout.label)
+                    .frame(width: layout.wing, alignment: .leading)
                     .offset(x: arrived ? 0 : 50)
                 Spacer(minLength: notch.width)
                 rightWing
-                    .frame(width: Layout.noticeWing, alignment: .trailing)
+                    .frame(width: layout.wing, alignment: .trailing)
                     .offset(x: arrived ? 0 : -50)
             }
             .frame(height: notch.height)
@@ -35,24 +34,34 @@ struct NoticeBanner: View {
             .modifier(WingExit(exit: notice.leaving))
 
             VStack(alignment: .leading, spacing: 10) {
-                if lines > 0 {
-                    Text(notice.detail)
-                        .font(.system(size: 12))
-                        .foregroundStyle(Theme.soft)
-                        .lineSpacing(Layout.noticeLine - 14.3)
-                        .lineLimit(lines)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .contentShape(Rectangle())
-                        .onTapGesture { act(.open) }
+                if layout.titleBelow || layout.bodyLines > 0 {
+                    VStack(alignment: .leading, spacing: 0) {
+                        if layout.titleBelow {
+                            Text(notice.title)
+                                .font(.system(size: 12, weight: .semibold))
+                                .lineLimit(1)
+                                .frame(height: Layout.noticeLine)
+                        }
+                        if layout.bodyLines > 0 {
+                            Text(notice.detail)
+                                .font(.system(size: 12))
+                                .foregroundStyle(Theme.soft)
+                                .lineSpacing(Layout.noticeLine - 14.3)
+                                .lineLimit(layout.bodyLines)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .onTapGesture { act(.open) }
                 }
                 if Notices.showsActions(notice, hovering: hovering) {
                     ActionRow(actions: notice.actions, pressed: notice.pressed) { act(.press($0)) }
                         .transition(.opacity.combined(with: .offset(y: -6)))
                 }
             }
-            .padding(.leading, textStart)
+            .padding(.leading, Layout.noticeTextStart)
             .padding(.trailing, edge)
-            .padding(.top, lines > 0 ? 0 : Layout.noticeBottom - 2)
+            .padding(.top, layout.belowHeight > 0 ? 0 : Layout.noticeBottom - 2)
             .opacity(arrived ? 1 : 0)
             .offset(y: arrived ? 0 : -6)
             .blur(radius: arrived ? 0 : 4)
@@ -66,10 +75,10 @@ struct NoticeBanner: View {
         }
     }
 
-    private var leftWing: some View {
+    private func leftWing(_ label: String) -> some View {
         HStack(spacing: 6) {
             SenderIcon(app: notice.app).frame(width: 18, height: 18)
-            Text(notice.title.isEmpty ? notice.app : notice.title)
+            Text(label)
                 .font(.system(size: 13, weight: .semibold))
                 .lineLimit(1)
         }
