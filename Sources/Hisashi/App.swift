@@ -156,7 +156,8 @@ final class NotchPanel: NSPanel {
         acceptsMouseMovedEvents = true
     }
 
-    override var canBecomeKey: Bool { true }
+    // Never key: a click in the notch must not take focus from the window being worked in.
+    override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
     // Keep AppKit from pushing the window below the menu bar.
     override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect { frameRect }
