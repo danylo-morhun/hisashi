@@ -3,7 +3,7 @@ import SwiftUI
 
 /// Another app's notification spread into the menu bar beside the camera:
 /// icon and title in the left wing, time in the right, the text under the camera,
-/// the app's buttons below when wanted. Every column starts at the title's edge.
+/// the app's buttons at the right end of the text when wanted. Every column starts at the title's edge.
 /// Click opens what it points to; on hover the time turns into a close mark.
 struct NoticeBanner: View {
     let notice: AppNotice
@@ -33,14 +33,14 @@ struct NoticeBanner: View {
             .blur(radius: arrived ? 0 : 4)
             .modifier(WingExit(exit: notice.leaving))
 
-            VStack(alignment: .leading, spacing: 10) {
+            Group {
                 if layout.titleBelow || layout.bodyLines > 0 {
                     VStack(alignment: .leading, spacing: 0) {
                         if layout.titleBelow {
                             Text(notice.title)
                                 .font(.system(size: 12, weight: .semibold))
                                 .lineLimit(1)
-                                .frame(height: Layout.noticeLine)
+                                .frame(height: layout.bodyLines > 0 ? Layout.noticeLine : layout.messageHeight)
                         }
                         if layout.bodyLines > 0 {
                             Text(notice.detail)
@@ -48,15 +48,25 @@ struct NoticeBanner: View {
                                 .foregroundStyle(Theme.soft)
                                 .lineSpacing(Layout.noticeLine - 14.3)
                                 .lineLimit(layout.bodyLines)
+                                .frame(height: layout.messageHeight)
                         }
                     }
+                    .padding(.trailing, layout.buttons)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
                     .onTapGesture { act(.open) }
-                }
-                if Notices.showsActions(notice, hovering: hovering) {
-                    ActionRow(actions: notice.actions, pressed: notice.pressed) { act(.press($0)) }
-                        .transition(.opacity.combined(with: .offset(y: -6)))
+                    // Over the text, so the buttons add no height; a capsule taller than one line
+                    // reaches a little into the margins.
+                    // Centered on the message; a title line above it is left out.
+                    .overlay(alignment: .trailing) {
+                        if showsActions {
+                            actions
+                                .frame(width: layout.buttons - 10)
+                                .offset(y: layout.titleBelow && layout.bodyLines > 0 ? Layout.noticeLine / 2 : 0)
+                        }
+                    }
+                } else if showsActions {
+                    actions
                 }
             }
             .padding(.leading, Layout.noticeTextStart)
@@ -69,10 +79,17 @@ struct NoticeBanner: View {
         }
         .frame(width: width, alignment: .topLeading)
         .animation(.easeInOut(duration: 0.3), value: notice.leaving)
-        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: Notices.showsActions(notice, hovering: hovering))
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: showsActions)
         .onAppear {
             withAnimation(.spring(response: 0.5, dampingFraction: 0.72).delay(0.06)) { arrived = true }
         }
+    }
+
+    private var showsActions: Bool { Notices.showsActions(notice, hovering: hovering) }
+
+    private var actions: some View {
+        ActionRow(actions: notice.actions, pressed: notice.pressed) { act(.press($0)) }
+            .transition(.opacity.combined(with: .offset(x: 6)))
     }
 
     private func leftWing(_ label: String) -> some View {
@@ -196,7 +213,7 @@ private struct CountdownRing: NSViewRepresentable {
     }
 }
 
-/// Capsule buttons, the first one bright. As many as fit at their own width share the row;
+/// Capsule buttons against the right edge, the first one bright. As many as fit at their own width share the row;
 /// the rest go into Options. A pressed button folds into a green check.
 private struct ActionRow: View {
     let actions: [String]
@@ -209,7 +226,7 @@ private struct ActionRow: View {
                 Image(systemName: "checkmark")
                     .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(.black)
-                    .frame(width: 24, height: 24)
+                    .frame(width: Layout.noticeButton, height: Layout.noticeButton)
                     .background(Circle().fill(Theme.color(.success)))
                     .transition(.scale(scale: 0.2).combined(with: .opacity))
             } else {
@@ -221,7 +238,7 @@ private struct ActionRow: View {
                 .transition(.scale(scale: 0.6).combined(with: .opacity))
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .trailing)
         .animation(.spring(response: 0.4, dampingFraction: 0.6), value: pressed)
     }
 
@@ -262,7 +279,7 @@ private struct ActionCapsule: View {
         .font(.system(size: 11.5, weight: .medium))
         .foregroundStyle(primary ? Color.black : Theme.ink)
         .padding(.horizontal, 11)
-        .frame(height: 24)
+        .frame(height: Layout.noticeButton)
         .background(SwiftUI.Capsule().fill(fill))
         .contentShape(SwiftUI.Capsule())
         .onHover { isHovered = $0 }
