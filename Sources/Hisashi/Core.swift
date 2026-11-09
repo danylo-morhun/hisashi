@@ -41,6 +41,15 @@ struct NowPlaying: Equatable {
     }
 }
 
+enum Players {
+    /// YouTube registers a video as soon as the pointer rests on it in the feed, and even reports
+    /// it playing during the silent preview. Firefox gives no position for real videos either,
+    /// so a track without one counts only once its app has been heard playing it.
+    static func isReal(_ player: NowPlaying, heard: Set<String>) -> Bool {
+        player.duration > 0 || player.elapsed > 0 || heard.contains(player.trackKey)
+    }
+}
+
 /// Volume or brightness feedback shown in place of the system popup.
 struct Hud: Equatable {
     enum Kind: Equatable { case volume, brightness }
@@ -396,7 +405,14 @@ struct NotchState: Equatable {
     /// Everything the notifications tab lists.
     var history: [HistoryItem] { History.merge(stored: stored, recent: recent, cleared: clearedApps) }
     var players: [NowPlaying] = []
+    /// Everything the system reports, silent previews in a feed included.
+    var reported: [NowPlaying] = []
+    /// Tracks whose sound was heard, to tell them from those previews.
+    var heard: Set<String> = []
     var selectedID: String?
+
+    /// The app whose sound to listen to: the one shown, else one that may turn out to be real.
+    var listening: String? { activity?.app ?? reported.first(where: \.isPlaying)?.app }
 
     /// The player shown and controlled: the chosen one, else whatever plays.
     var nowPlaying: NowPlaying? {
@@ -451,6 +467,8 @@ enum NotchAction {
     /// Clears one app's stack, or every stack when nil.
     case clearHistory(app: String?, at: Date)
     case players([NowPlaying])
+    /// Sound is coming from the app being listened to.
+    case heard
     case selectPlayer(String)
     case togglePlayback(at: Date)
     /// A Claude Code hook spoke.
@@ -482,7 +500,11 @@ func reduce(_ state: NotchState, _ action: NotchAction) -> NotchState {
     case .remember(let item): s.recent = s.recent.filter { $0.id != item.id } + [item]
     case .clearHistory(let app, let now):
         for name in app.map({ [$0] }) ?? Array(Set(s.history.map(\.app))) { s.clearedApps[name] = now }
-    case .players(let next):
+    case .players(let reported):
+        s.reported = reported
+        if s.heard.count > 200 { s.heard.formIntersection(reported.map(\.trackKey)) }
+        let heard = s.heard
+        let next = reported.filter { Players.isReal($0, heard: heard) }
         let before = s.nowPlaying
         // A player that just started takes over the panel.
         let started = next.first { p in p.isPlaying && !(s.players.first { $0.id == p.id }?.isPlaying ?? false) }
@@ -494,6 +516,12 @@ func reduce(_ state: NotchState, _ action: NotchAction) -> NotchState {
         s.players = next
         // Stay on the shown player when it pauses, instead of falling back to another one.
         s.selectedID = s.nowPlaying?.id
+    case .heard:
+        let playing = Set(s.reported.filter(\.isPlaying).map(\.trackKey))
+        if !playing.isSubset(of: s.heard) {
+            s.heard.formUnion(playing)
+            s = reduce(s, .players(s.reported))
+        }
     case .selectPlayer(let id):
         s.selectedID = id
     case .togglePlayback(let now):
