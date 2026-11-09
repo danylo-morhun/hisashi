@@ -33,7 +33,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         media = MediaBridge { [weak self] players in
             guard let self, let model = self.model else { return }
             model.send(.players(players))
-            self.audio.setTarget(model.state.activity?.app)
+            self.audio.setTarget(model.state.listening)
+        }
+        audio.onSound = { [weak self] in
+            guard let model = self?.model else { return }
+            model.send(.heard)
+            self?.audio.setTarget(model.state.listening)
         }
         model?.sendMedia = { [weak self] command, player in self?.media?.send(command, to: player) }
         media?.start()
