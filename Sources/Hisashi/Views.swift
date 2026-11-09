@@ -78,6 +78,10 @@ struct NotchView: View {
                 AgentActivity(agent: agent, working: model.state.agents.filter(\.working).count, notch: model.notch)
                     .frame(width: Layout.size(model.state, notch: model.notch).width)
                     .transition(.activityFade)
+            } else if let timer = model.state.today.timer {
+                TimerActivity(timer: timer, notch: model.notch)
+                    .frame(width: Layout.size(model.state, notch: model.notch).width)
+                    .transition(.activityFade)
             } else if let np = model.state.activity {
                 let width = Layout.size(.compact, activity: true, notch: model.notch).width
                 CompactActivity(nowPlaying: np, notch: model.notch)
@@ -232,6 +236,8 @@ struct TabPane: View {
             case .media:
                 MediaPane(players: model.state.players, current: model.state.nowPlaying,
                           select: { model.send(.selectPlayer($0)) }, command: model.media)
+            case .today:
+                TodayPane(model: model)
             case .notifications:
                 HistoryPane(items: model.state.history, clear: model.clearHistory, open: model.openHistory)
             default: Placeholder(tab: model.state.tab)
