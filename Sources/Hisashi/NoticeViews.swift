@@ -94,9 +94,14 @@ struct NoticeBanner: View {
 
     private func leftWing(_ label: String) -> some View {
         HStack(spacing: 6) {
-            SenderIcon(app: notice.app, photo: notice.image).frame(width: 18, height: 18)
+            if let tone = CI.tone(ofNotice: notice.id) {
+                StatusMark(tone: tone).frame(width: 16, height: 16).frame(width: 18, height: 18)
+            } else {
+                SenderIcon(app: notice.app, photo: notice.image).frame(width: 18, height: 18)
+            }
             Text(label)
                 .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(CI.tone(ofNotice: notice.id).map(Theme.color) ?? Theme.ink)
                 .lineLimit(1)
         }
         .padding(.leading, edge)
