@@ -131,10 +131,12 @@ struct RunMark: View {
 struct JobSegments: View {
     let jobs: [CIRun.Job]
     var gap: CGFloat = 3
+    /// Many jobs share segments; off when the caller already did that.
+    var grouped = true
 
     var body: some View {
         HStack(spacing: gap) {
-            ForEach(Array(CI.segments(jobs).enumerated()), id: \.offset) { _, job in
+            ForEach(Array((grouped ? CI.segments(jobs) : jobs).enumerated()), id: \.offset) { _, job in
                 Capsule().fill(Self.color(job))
             }
         }
@@ -143,11 +145,33 @@ struct JobSegments: View {
 
     static func color(_ job: CIRun.Job) -> Color {
         switch job {
-        case .waiting: return Color(hex: 0x3A3A3C)
+        // Like the system fill on dark: present, but quieter than any state.
+        case .waiting: return .white.opacity(0.18)
         case .running: return Theme.color(.warning)
         case .passed: return Theme.color(.success)
         case .failed: return Theme.color(.failure)
         }
+    }
+}
+
+/// A run's jobs along the bottom of the closed notch's ears: one track read left to right,
+/// broken by the camera. Inset from the round corners and from the camera, so nothing
+/// touches either.
+struct EarTrack: View {
+    let jobs: [CIRun.Job]
+    let notch: CGSize
+
+    var body: some View {
+        let (left, right) = CI.ears(CI.segments(jobs))
+        HStack(spacing: 0) {
+            JobSegments(jobs: left, gap: 2, grouped: false).frame(width: Layout.earTrack, height: 2)
+            Spacer(minLength: notch.width + Layout.earTrackGap * 2)
+            JobSegments(jobs: right, gap: 2, grouped: false).frame(width: Layout.earTrack, height: 2)
+        }
+        .padding(.horizontal, Layout.earTrackInset)
+        .padding(.bottom, 3)
+        .accessibilityElement()
+        .accessibilityLabel(CI.summary(jobs))
     }
 }
 
@@ -207,41 +231,25 @@ struct BranchMark: Shape {
     }
 }
 
-/// The jobs of a running CI run, on a thin chin the closed notch grows under the camera
-/// (the camera itself has no pixels to draw on).
-struct CIChin: View {
-    let run: CIRun
-    let notch: CGSize
-
-    var body: some View {
-        JobSegments(jobs: run.jobs)
-            .frame(width: notch.width - 12, height: 2)
-            .frame(height: Layout.ciChin - 1, alignment: .top)
-            .padding(.top, 1)
-    }
-}
-
-/// Closed notch while CI runs: a branch left of the camera, elapsed time right of it, jobs below.
+/// Closed notch while CI runs: a branch left of the camera, elapsed time right of it.
+/// The jobs hang under the notch, drawn by `NotchView`.
 struct CIActivity: View {
     let run: CIRun
     let notch: CGSize
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                BranchMark()
-                    .stroke(Theme.color(.warning), style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
-                    .frame(width: 14, height: 14)
-                Spacer(minLength: notch.width)
-                TimelineView(.periodic(from: run.started, by: 1)) { context in
-                    Text(Agents.elapsed(context.date.timeIntervalSince(run.started)))
-                        .font(.system(size: 12, weight: .semibold).monospacedDigit())
-                        .foregroundStyle(Theme.color(.warning))
-                }
+        HStack(spacing: 0) {
+            BranchMark()
+                .stroke(Theme.color(.warning), style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
+                .frame(width: 14, height: 14)
+            Spacer(minLength: notch.width)
+            TimelineView(.periodic(from: run.started, by: 1)) { context in
+                Text(Agents.elapsed(context.date.timeIntervalSince(run.started)))
+                    .font(.system(size: 12, weight: .semibold).monospacedDigit())
+                    .foregroundStyle(Theme.color(.warning))
             }
-            .padding(.horizontal, 11)
-            .frame(height: notch.height)
-            CIChin(run: run, notch: notch)
         }
+        .padding(.horizontal, 11)
+        .frame(height: notch.height)
     }
 }

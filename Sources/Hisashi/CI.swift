@@ -153,6 +153,22 @@ enum CI {
         }
     }
 
+    /// Segments split between the two ears, the first half left of the camera.
+    /// A single job fills both, as one bar the camera interrupts.
+    static func ears(_ segments: [CIRun.Job]) -> (left: [CIRun.Job], right: [CIRun.Job]) {
+        guard segments.count > 1 else { return (segments, segments) }
+        let half = (segments.count + 1) / 2
+        return (Array(segments.prefix(half)), Array(segments.dropFirst(half)))
+    }
+
+    /// The jobs as VoiceOver reads them.
+    static func summary(_ jobs: [CIRun.Job]) -> String {
+        let done = jobs.filter { $0 == .passed }.count
+        let failures = jobs.filter { $0 == .failed }.count
+        let failed = failures > 0 ? ", \(failures) failed" : ""
+        return jobs.isEmpty ? "CI starting" : "CI, \(done) of \(jobs.count) jobs done" + failed
+    }
+
     /// What a run row says after the repo.
     static func detail(_ run: CIRun) -> String {
         let base = run.workflow + " on " + run.branch

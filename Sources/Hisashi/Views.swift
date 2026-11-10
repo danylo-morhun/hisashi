@@ -48,6 +48,12 @@ struct NotchView: View {
         // Content and black body are one view, clipped by one shape: nothing can float outside it.
         content(mode)
             .frame(width: size.width, height: size.height, alignment: .top)
+            // CI jobs line the bottom of the ears, so the notch keeps its size.
+            .overlay(alignment: .bottom) {
+                if Layout.showsJobs(model.state), let run = model.state.ciRun {
+                    EarTrack(jobs: run.jobs, notch: model.notch).transition(.activityFade)
+                }
+            }
             .padding(.horizontal, Layout.flare)
             .clipShape(shape)
             // Shadow lives on the still black body, so live content above it
@@ -75,10 +81,7 @@ struct NotchView: View {
         switch mode {
         case .compact:
             if let agent = model.state.agent {
-                VStack(spacing: 0) {
-                    AgentActivity(agent: agent, working: model.state.agents.filter(\.working).count, notch: model.notch)
-                    if let run = model.state.ciRun { CIChin(run: run, notch: model.notch).transition(.opacity) }
-                }
+                AgentActivity(agent: agent, working: model.state.agents.filter(\.working).count, notch: model.notch)
                     .frame(width: Layout.size(model.state, notch: model.notch).width)
                     .transition(.activityFade)
             } else if let timer = model.state.today.timer {
