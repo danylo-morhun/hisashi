@@ -37,8 +37,8 @@ clicking a session brings its terminal to the front.
 runs come from GitHub Actions on the repos pushed to in the last week, for every account
 `gh` is signed in to (tokens are taken with `gh auth token`). a finished run shows as a notice:
 a pass goes away by itself, a failure stays with a rerun button.
-while a run of yours is going, the closed notch grows a thin strip under the camera
-with one segment per job: green done, orange running, grey waiting, red failed. clicking a run opens it on GitHub.
+while a run of yours is going, the bottom of the closed notch's ears carries
+one segment per job: green done, orange running, grey waiting, red failed. clicking a run opens it on GitHub.
 
 ## permissions
 
