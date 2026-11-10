@@ -20,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var monitors: [Any] = []
     private var media: MediaBridge?
     private let levels = AudioLevels()
+    private let picks = MainActor.assumeIsolated { Picks() }
     private lazy var audio = AudioTap(levels: levels)
     private var keys: KeyTap?
     private let banners = BannerWatch()
@@ -241,7 +242,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                            width: size.width, height: size.height)
         panel?.close()
         let panel = NotchPanel(frame: frame)
-        let host = NSHostingView(rootView: NotchView(model: model).environment(levels))
+        let host = NSHostingView(rootView: NotchView(model: model).environment(levels).environment(picks))
         host.sizingOptions = []
         host.frame = CGRect(origin: .zero, size: size)
         panel.contentView = host
