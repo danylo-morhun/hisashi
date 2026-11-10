@@ -57,6 +57,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if CommandLine.arguments.contains("--pinned") { model?.send(.togglePin) }
         // Dev aid: `--today` starts on the today tab.
         if CommandLine.arguments.contains("--today") { model?.send(.select(.today)) }
+        // Dev aid: `--focus` starts on the focus tab.
+        if CommandLine.arguments.contains("--focus") { model?.send(.select(.focus)) }
         // Dev aid: `--timer 90` starts a timer of that many seconds.
         if let i = CommandLine.arguments.firstIndex(of: "--timer"), CommandLine.arguments.count > i + 1,
            let seconds = TimeInterval(CommandLine.arguments[i + 1]) {
