@@ -187,9 +187,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func screensChanged() { buildPanel() }
 
-    /// Starts with the Mac. Registered once only: turned off later in Login Items, it stays off.
+    /// Starts with the Mac. Turned off in Login Items (requiresApproval), it stays off.
+    /// A rebuild deletes the bundle and its record (notFound), so register again then.
     private func launchAtLogin() {
-        guard SMAppService.mainApp.status == .notRegistered else { return }
+        let status = SMAppService.mainApp.status
+        guard status == .notRegistered || status == .notFound else { return }
         try? SMAppService.mainApp.register()
     }
 
