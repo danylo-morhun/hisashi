@@ -1,29 +1,67 @@
-hisashi\
-a small shelf in the macbook notch.
+# hisashi
 
-hover the notch and it opens: now playing, today, notifications, a file shelf,\
-focus, and [seikatsu](https://github.com/danylo-morhun/seikatsu).\
-pure black, system type, color only when something happens.
+macOS app that turns the MacBook notch into a panel for music, the day's calendar,
+notifications and Claude Code sessions.
 
-notifications grow out of the camera instead of the system banner,\
-with the app's own buttons. they stay in notification center.\
-needs accessibility access; without it the system banners stay.
+the closed notch shows what is going on: the playing track with album art and an equalizer,
+volume and brightness levels instead of the system popup, other apps' notifications
+and the progress of a running Claude Code session. hovering the notch opens the panel.
 
-the notifications tab mirrors notification center, one stack per app.\
-it needs full disk access, and clearing needs the "show notification centre"\
-shortcut set to ctrl option command f19 (keyboard shortcuts, mission control).
+## tabs
 
-claude code shows while it works: a turning spark and the time beside the camera,\
-the current step in the open notch, questions and finished replies as notices.\
-questions with single choices are answered right in the notch, one after another.\
-point its hooks at `scripts/claude-hook.sh` (userpromptsubmit, pretooluse,\
-posttooluse, notification, stop, sessionend).
+| tab           | what it shows                                                                                |
+| :------------ | :------------------------------------------------------------------------------------------- |
+| now playing   | the current track from any player, with playback controls                                    |
+| today         | today's events from all calendars with a join button for calls, weather, battery and a timer |
+| notifications | the Notification Center list, one stack per app, with clearing                               |
+| shelf         | not built yet                                                                                |
+| focus         | not built yet                                                                                |
+| seikatsu      | not built yet                                                                                |
 
-the today tab shows the day's calendar, weather, battery and a timer.\
-one event gets one notification, however many apps announce it.\
-it needs calendar access. weather follows location access; without it, put a city in\
-`~/Library/Application Support/Hisashi/config.json`: `{"city": "..."}`.
+## notifications
 
-early. the shell works, the tabs come next.
+banners from other apps are hidden and shown in the notch instead, with the app's own buttons.
+the notifications stay in Notification Center. an event that several calendars announce
+is shown once.
 
-`scripts/run.sh` builds and launches it. needs command line tools, not xcode.
+## Claude Code
+
+point every Claude Code hook event at `scripts/claude-hook.sh`. the script sends the hook data
+to hisashi over a unix socket and exits at once when hisashi is not running.
+the notch then shows the elapsed time of the current turn, the current step and finished replies.
+questions with single-choice answers can be answered in the notch.
+clicking a session brings its terminal to the front.
+
+## permissions
+
+| permission                  | used for                                                     |
+| :-------------------------- | :----------------------------------------------------------- |
+| Accessibility               | notifications in the notch, volume and brightness keys       |
+| Full Disk Access            | the notifications tab and sender photos                      |
+| System Audio Recording Only | the equalizer. only levels are computed, nothing is recorded |
+| Calendars                   | the today tab                                                |
+| Location                    | weather                                                      |
+
+without location access, weather uses a city from
+`~/Library/Application Support/Hisashi/config.json`:
+
+```json
+{ "city": "Katowice" }
+```
+
+clearing notifications needs the "Show Notification Centre" shortcut set to
+ctrl option command F19 in System Settings, Keyboard Shortcuts, Mission Control.
+
+## run
+
+requires macOS 15 or later and Xcode Command Line Tools. Xcode itself is not needed.
+
+```bash
+scripts/dev-cert.sh   # once: local signing identity, keeps permissions across rebuilds
+scripts/run.sh        # build, stop the running copy, start the new one
+```
+
+`scripts/bundle.sh` builds `build/Hisashi.app` without starting it.
+
+now playing reads the private MediaRemote framework through a small helper library
+loaded into `/usr/bin/perl`, because MediaRemote only answers Apple-signed processes.
