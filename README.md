@@ -11,12 +11,20 @@ the progress of a running Claude Code session and a CI run you started. hovering
 
 | tab           | what it shows                                                                                |
 | :------------ | :------------------------------------------------------------------------------------------- |
-| now playing   | the current track from any player, with playback controls                                    |
+| now playing   | the current track from any player, with playback controls, or Spotify picks                  |
 | today         | today's events from all calendars with a join button for calls, weather, battery and a timer |
 | notifications | the Notification Center list, one stack per app, with clearing                               |
 | shelf         | not built yet                                                                                |
 | status        | Claude Code sessions and GitHub Actions runs in one feed, work in progress first             |
 | seikatsu      | not built yet                                                                                |
+
+## Spotify picks
+
+when nothing plays, or after the list button in the player, the now playing tab offers random songs
+from your Spotify: a mix, liked songs, top tracks, forgotten ones and your playlists. a song from a playlist
+plays on through that playlist; any other starts a radio from it: a private "hisashi radio"
+playlist holding the one song, after which Spotify autoplay goes on with similar songs. this needs Spotify Premium:
+connect once in the browser, the token is kept in `~/Library/Application Support/Hisashi/spotify.json`.
 
 ## notifications
 
