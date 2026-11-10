@@ -75,6 +75,8 @@ final class NoticeStore {
             guard sqlite3_column_bytes(stmt, 0) == 16, let raw = sqlite3_column_blob(stmt, 0) else { continue }
             let uuid = NSUUID(uuidBytes: raw.assumingMemoryBound(to: UInt8.self)).uuidString
             let bundle = String(cString: sqlite3_column_text(stmt, 1))
+            // Notification Center keeps rows of removed apps but no longer lists them.
+            guard Apps.installed(bundle) else { continue }
             let blob = Data(bytes: sqlite3_column_blob(stmt, 2), count: Int(sqlite3_column_bytes(stmt, 2)))
             let date = Date(timeIntervalSinceReferenceDate: sqlite3_column_double(stmt, 3))
             guard let item = Self.decode(id: uuid, bundle: bundle, blob: blob, date: date) else { continue }
@@ -99,6 +101,13 @@ final class NoticeStore {
 /// App names and launching by bundle id; Notification Center stores ids, often lowercased.
 enum Apps {
     private static var names: [String: String] = [:]
+
+    /// An app still on the Mac. System senders (AirDrop, Login Items) have no app to find,
+    /// except Apple's developer tools, which are ordinary apps that can be removed.
+    static func installed(_ bundle: String) -> Bool {
+        let system = bundle.hasPrefix("com.apple.") && !bundle.hasPrefix("com.apple.dt.")
+        return system || NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundle) != nil
+    }
 
     static func name(_ bundle: String) -> String {
         if let hit = names[bundle] { return hit }
