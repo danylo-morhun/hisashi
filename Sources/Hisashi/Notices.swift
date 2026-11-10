@@ -333,7 +333,9 @@ final class BannerWatch {
         if let hit = appURLs[name] { return hit }
         let running = NSWorkspace.shared.runningApplications.first { $0.localizedName == name }?.bundleURL
         let folders = ["/Applications", "/System/Applications", "/System/Applications/Utilities",
-                       NSHomeDirectory() + "/Applications", "/System/Library/CoreServices"]
+                       NSHomeDirectory() + "/Applications", "/System/Library/CoreServices",
+                       // AirDrop, Recents and the like live inside Finder.
+                       "/System/Library/CoreServices/Finder.app/Contents/Applications"]
         let installed = folders.lazy.map { URL(fileURLWithPath: "\($0)/\(name).app") }
             .first { FileManager.default.fileExists(atPath: $0.path) }
         let url = running ?? installed
