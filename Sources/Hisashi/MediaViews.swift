@@ -25,44 +25,77 @@ struct MediaPane: View {
     let current: NowPlaying?
     let select: (String) -> Void
     let command: (MediaCommand) -> Void
+    /// Looking through the picks while a player is shown; a new track brings the player back.
+    @State private var browsing = false
+    @Namespace private var art
+    @Environment(Picks.self) private var picks
 
     var body: some View {
-        if let np = current {
-            HStack(spacing: 16) {
-                ZStack {
+        ZStack {
+            if let np = shown, !browsing || picks.starting != nil {
+                player(np)
+                    .transition(.opacity)
+            } else {
+                PicksPane(back: current == nil ? nil : { browsing = false }, art: art)
+                    .transition(.opacity.combined(with: .scale(scale: 0.97)))
+            }
+        }
+        .onChange(of: current?.songKey) {
+            browsing = false
+            picks.arrived(current?.title)
+        }
+        .onChange(of: picks.starting?.id) { if picks.starting != nil { browsing = false } }
+    }
+
+    /// The picked song stands in for the player until Spotify reports it, so the old track
+    /// never flashes up in between.
+    private var shown: NowPlaying? {
+        guard let pick = picks.starting else { return current }
+        let spotify = players.first { $0.app == Spotify.bundleID }
+        return NowPlaying(title: pick.title, artist: pick.artist, duration: pick.duration, elapsed: 0,
+                          timestamp: Date(), isPlaying: true, app: Spotify.bundleID, pid: spotify?.pid ?? 0)
+    }
+
+    private func player(_ np: NowPlaying) -> some View {
+        HStack(spacing: 16) {
+            ZStack {
+                if let pick = picks.starting {
+                    PickCover(url: pick.art)
+                        .matchedGeometryEffect(id: pick.id, in: art)
+                        .frame(width: 132, height: 132)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                } else {
                     Artwork(nowPlaying: np, size: 132, radius: 16)
-                        .id(np.trackKey)
+                        .id(np.songKey)
                         .transition(.artworkSwap)
                 }
-                VStack(alignment: .leading, spacing: 0) {
-                    HStack(alignment: .top) {
-                        ZStack(alignment: .topLeading) {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(np.title).font(.system(size: 17, weight: .semibold)).lineLimit(1)
-                                Text(np.artist).font(.system(size: 13)).foregroundStyle(Theme.muted).lineLimit(1)
-                            }
-                            .id(np.trackKey)
-                            .transition(.trackSwap)
-                        }
-                        Spacer(minLength: 12)
-                        Equalizer(isPlaying: np.isPlaying).padding(.top, 4)
-                    }
-                    Spacer(minLength: 8)
-                    Progress(nowPlaying: np)
-                    Spacer(minLength: 8)
-                    Controls(isPlaying: np.isPlaying, command: command)
-                }
-                .padding(.vertical, 4)
-                if players.count > 1 {
-                    SourceSwitcher(players: players, current: np.id, select: select)
-                }
             }
-            .animation(.trackSwap, value: np.trackKey)
-        } else {
-            RoundedRectangle(cornerRadius: 14)
-                .fill(Theme.surface)
-                .overlay(Text("Nothing playing").font(.system(size: 13)).foregroundStyle(Theme.muted))
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .top) {
+                    ZStack(alignment: .topLeading) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(np.title).font(.system(size: 17, weight: .semibold)).lineLimit(1)
+                            Text(np.artist).font(.system(size: 13)).foregroundStyle(Theme.muted).lineLimit(1)
+                        }
+                        .id(np.songKey)
+                        .transition(.trackSwap)
+                    }
+                    Spacer(minLength: 12)
+                    Equalizer(isPlaying: np.isPlaying).padding(.top, 4)
+                    IconButton(symbol: "music.note.list", label: "Pick a song", isOn: false, width: 28) { browsing = true }
+                        .padding(.top, -4)
+                }
+                Spacer(minLength: 8)
+                Progress(nowPlaying: np)
+                Spacer(minLength: 8)
+                Controls(isPlaying: np.isPlaying, command: command)
+            }
+            .padding(.vertical, 4)
+            if players.count > 1 {
+                SourceSwitcher(players: players, current: np.id, select: select)
+            }
         }
+        .animation(.trackSwap, value: np.songKey)
     }
 }
 
@@ -266,4 +299,10 @@ func clock(_ seconds: Double) -> String {
     return s >= 3600
         ? String(format: "%d:%02d:%02d", s / 3600, s / 60 % 60, s % 60)
         : String(format: "%d:%02d", s / 60, s % 60)
+}
+
+extension NowPlaying {
+    /// The song alone, whatever app or process plays it: a picked song keeps its place when Spotify
+    /// takes over from the stand-in.
+    var songKey: String { title.lowercased() + "|" + artist.lowercased() }
 }
