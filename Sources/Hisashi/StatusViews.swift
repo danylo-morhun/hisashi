@@ -154,24 +154,19 @@ struct JobSegments: View {
     }
 }
 
-/// A run's jobs along the bottom of the closed notch's ears: one track read left to right,
-/// broken by the camera. Inset from the round corners and from the camera, so nothing
-/// touches either.
-struct EarTrack: View {
-    let jobs: [CIRun.Job]
-    let notch: CGSize
-
-    var body: some View {
-        let (left, right) = CI.ears(CI.segments(jobs))
-        HStack(spacing: 0) {
-            JobSegments(jobs: left, gap: 2, grouped: false).frame(width: Layout.earTrack, height: 2)
-            Spacer(minLength: notch.width + Layout.earTrackGap * 2)
-            JobSegments(jobs: right, gap: 2, grouped: false).frame(width: Layout.earTrack, height: 2)
+extension View {
+    /// Lays a run's jobs along the bottom of the closed notch, centered under this item
+    /// (the spark, the time), so each ear's track lines up with what sits above it.
+    func jobTrack(_ jobs: [CIRun.Job]?, height: CGFloat) -> some View {
+        frame(height: height).overlay(alignment: .bottom) {
+            if let jobs {
+                JobSegments(jobs: jobs, gap: 2, grouped: false)
+                    .frame(width: Layout.earTrack, height: 2)
+                    .padding(.bottom, 3)
+                    .fixedSize()
+                    .transition(.opacity.animation(.easeOut(duration: 0.25)))
+            }
         }
-        .padding(.horizontal, Layout.earTrackInset)
-        .padding(.bottom, 3)
-        .accessibilityElement()
-        .accessibilityLabel(CI.summary(jobs))
     }
 }
 
@@ -231,25 +226,30 @@ struct BranchMark: Shape {
     }
 }
 
-/// Closed notch while CI runs: a branch left of the camera, elapsed time right of it.
-/// The jobs hang under the notch, drawn by `NotchView`.
+/// Closed notch while CI runs: a branch left of the camera, elapsed time right of it,
+/// the jobs along the bottom under each.
 struct CIActivity: View {
     let run: CIRun
     let notch: CGSize
 
     var body: some View {
+        let ears = CI.ears(CI.segments(run.jobs))
         HStack(spacing: 0) {
             BranchMark()
                 .stroke(Theme.color(.warning), style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
                 .frame(width: 14, height: 14)
+                .jobTrack(ears.left, height: notch.height)
             Spacer(minLength: notch.width)
             TimelineView(.periodic(from: run.started, by: 1)) { context in
                 Text(Agents.elapsed(context.date.timeIntervalSince(run.started)))
                     .font(.system(size: 12, weight: .semibold).monospacedDigit())
                     .foregroundStyle(Theme.color(.warning))
             }
+            .jobTrack(ears.right, height: notch.height)
         }
         .padding(.horizontal, 11)
         .frame(height: notch.height)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(CI.summary(run.jobs))
     }
 }

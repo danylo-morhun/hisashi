@@ -614,11 +614,8 @@ enum Layout {
     static let activityEar: CGFloat = 38
     /// Wider for Claude at work: the elapsed time needs room once it passes ten minutes.
     static let agentEar: CGFloat = 44
-    /// CI job track in each ear: its width, its inset from the outer edge (clear of the
-    /// round corner) and the gap it keeps from the camera.
-    static let earTrack: CGFloat = 26
-    static let earTrackInset: CGFloat = 12
-    static var earTrackGap: CGFloat { agentEar - earTrackInset - earTrack }
+    /// Width of the CI job track in each ear, centered under the item above it.
+    static let earTrack: CGFloat = 22
     /// Width added on each side of the camera for volume and brightness.
     static let hudEar: CGFloat = 76
 

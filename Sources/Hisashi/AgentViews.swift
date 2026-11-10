@@ -2,23 +2,30 @@ import AppKit
 import SwiftUI
 
 /// Closed notch while Claude works: the spark turns left of the camera, elapsed time right of it.
-/// A second working session shows as a count beside the spark.
+/// A second working session shows as a count beside the spark; a CI run of the user's,
+/// as its jobs under the spark and the time.
 struct AgentActivity: View {
     let agent: AgentSession
     let working: Int
+    var jobs: CIRun?
     let notch: CGSize
 
     var body: some View {
+        let ears = jobs.map { CI.ears(CI.segments($0.jobs)) }
         HStack(spacing: 0) {
             HStack(spacing: 4) {
                 Spark().frame(width: 16, height: 16)
+                    .jobTrack(ears?.left, height: notch.height)
                 if working > 1 {
                     Text("\(working)").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.muted)
                 }
             }
             Spacer(minLength: notch.width)
             Elapsed(since: agent.since)
+                .jobTrack(ears?.right, height: notch.height)
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(jobs.map { "Claude working, " + CI.summary($0.jobs) } ?? "Claude working")
         .padding(.horizontal, 11)
         .frame(height: notch.height)
     }
