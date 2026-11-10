@@ -73,3 +73,7 @@ scripts/run.sh        # build, stop the running copy, start the new one
 
 now playing reads the private MediaRemote framework through a small helper library
 loaded into `/usr/bin/perl`, because MediaRemote only answers Apple-signed processes.
+
+## license
+
+MIT
