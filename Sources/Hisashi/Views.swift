@@ -165,8 +165,17 @@ struct EventBanner: View {
 
 struct OpenPanel: View {
     let model: NotchModel
+    @Environment(Shelf.self) private var shelf
 
     var body: some View {
+        if let target = shelf.incoming {
+            DropTargets(target: target, notch: model.notch).transition(.opacity)
+        } else {
+            panel.transition(.opacity)
+        }
+    }
+
+    private var panel: some View {
         VStack(spacing: 10) {
             // Top row lives in the "ears" left and right of the camera.
             HStack(spacing: 0) {
@@ -247,6 +256,8 @@ struct TabPane: View {
                 HistoryPane(items: model.state.history, clear: model.clearHistory, open: model.openHistory)
             case .status:
                 StatusPane(items: CI.feed(agents: model.state.agents, runs: model.state.runs))
+            case .shelf:
+                ShelfPane()
             default: Placeholder(tab: model.state.tab)
             }
         }
