@@ -5,7 +5,7 @@ notifications, Claude Code sessions and CI runs.
 
 the closed notch shows what is going on: the playing track with album art and an equalizer,
 volume and brightness levels instead of the system popup, other apps' notifications
-the progress of a running Claude Code session and of a CI run you started. hovering the notch opens the panel.
+the progress of a running Claude Code session and the jobs of a CI run you started. hovering the notch opens the panel.
 
 ## tabs
 
@@ -15,7 +15,7 @@ the progress of a running Claude Code session and of a CI run you started. hover
 | today         | today's events from all calendars with a join button for calls, weather, battery and a timer |
 | notifications | the Notification Center list, one stack per app, with clearing                               |
 | shelf         | not built yet                                                                                |
-| focus         | Claude Code sessions and GitHub Actions runs in one feed, work in progress first             |
+| status        | Claude Code sessions and GitHub Actions runs in one feed, work in progress first             |
 | seikatsu      | not built yet                                                                                |
 
 ## notifications
@@ -36,7 +36,9 @@ clicking a session brings its terminal to the front.
 
 runs come from GitHub Actions on the repos pushed to in the last week, for every account
 `gh` is signed in to (tokens are taken with `gh auth token`). a finished run shows as a notice:
-a pass goes away by itself, a failure stays with a rerun button. clicking a run opens it on GitHub.
+a pass goes away by itself, a failure stays with a rerun button.
+while a run of yours is going, the closed notch grows a thin strip under the camera
+with one segment per job: green done, orange running, grey waiting, red failed. clicking a run opens it on GitHub.
 
 ## permissions
 
