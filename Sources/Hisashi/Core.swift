@@ -614,8 +614,8 @@ enum Layout {
     static let activityEar: CGFloat = 38
     /// Wider for Claude at work: the elapsed time needs room once it passes ten minutes.
     static let agentEar: CGFloat = 44
-    /// Width of the CI job track in each ear, centered under the item above it.
-    static let earTrack: CGFloat = 22
+    /// Added to each ear when the CI sign has to share the left one with Claude's spark and count.
+    static let crowdedEar: CGFloat = 10
     /// Width added on each side of the camera for volume and brightness.
     static let hudEar: CGFloat = 76
 
@@ -641,15 +641,10 @@ enum Layout {
     /// Closed: Claude at work, the timer and CI take the wider ears, else music its own.
     static func compactSize(_ state: NotchState, notch: CGSize) -> CGSize {
         if state.agent != nil || state.today.timer != nil || state.ciRun != nil {
-            return CGSize(width: notch.width + agentEar * 2, height: notch.height)
+            let crowded = state.ciRun != nil && state.agents.filter(\.working).count > 1
+            return CGSize(width: notch.width + (agentEar + (crowded ? crowdedEar : 0)) * 2, height: notch.height)
         }
         return size(.compact, activity: state.hasActivity, notch: notch)
-    }
-
-    /// The job track lines the closed notch's ears, with Claude or on its own;
-    /// the timer takes the ears without them.
-    static func showsJobs(_ state: NotchState) -> Bool {
-        state.mode == .compact && state.ciRun != nil && (state.agent != nil || state.today.timer == nil)
     }
 
     static func bottomRadius(_ state: NotchState, notch: CGSize) -> CGFloat {

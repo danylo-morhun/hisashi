@@ -76,7 +76,7 @@ struct NotchView: View {
         case .compact:
             if let agent = model.state.agent {
                 AgentActivity(agent: agent, working: model.state.agents.filter(\.working).count,
-                              jobs: Layout.showsJobs(model.state) ? model.state.ciRun : nil, notch: model.notch)
+                              ci: model.state.ciRun != nil, notch: model.notch)
                     .frame(width: Layout.size(model.state, notch: model.notch).width)
                     .transition(.activityFade)
             } else if let timer = model.state.today.timer {
