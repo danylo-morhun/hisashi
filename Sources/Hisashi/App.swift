@@ -21,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var media: MediaBridge?
     private let levels = AudioLevels()
     private let picks = MainActor.assumeIsolated { Picks() }
+    private let shelf = MainActor.assumeIsolated { Shelf() }
     private lazy var audio = AudioTap(levels: levels)
     private var keys: KeyTap?
     private let banners = BannerWatch()
@@ -54,12 +55,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         startClaude()
         startToday()
         startCI()
+        MainActor.assumeIsolated {
+            shelf.onKept = { [weak self] in self?.model?.send(.select(.shelf)) }
+            shelf.onIncoming = { [weak self] over in self?.model?.send(.dropping(over)) }
+            // Dev aid: `--drop` shows the drop targets as if a file hovered the notch.
+            if CommandLine.arguments.contains("--drop") { shelf.hover(.keep) }
+        }
         // Dev aid: `open build/Hisashi.app --args --pinned` starts open.
         if CommandLine.arguments.contains("--pinned") { model?.send(.togglePin) }
         // Dev aid: `--today` starts on the today tab.
         if CommandLine.arguments.contains("--today") { model?.send(.select(.today)) }
         // Dev aid: `--status` starts on the status tab.
         if CommandLine.arguments.contains("--status") { model?.send(.select(.status)) }
+        // Dev aid: `--shelf` starts on the shelf tab.
+        if CommandLine.arguments.contains("--shelf") { model?.send(.select(.shelf)) }
         // Dev aid: `--timer 90` starts a timer of that many seconds.
         if let i = CommandLine.arguments.firstIndex(of: "--timer"), CommandLine.arguments.count > i + 1,
            let seconds = TimeInterval(CommandLine.arguments[i + 1]) {
@@ -242,10 +251,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                            width: size.width, height: size.height)
         panel?.close()
         let panel = NotchPanel(frame: frame)
-        let host = NSHostingView(rootView: NotchView(model: model).environment(levels).environment(picks))
+        let host = NSHostingView(rootView: NotchView(model: model).environment(levels).environment(picks).environment(shelf))
         host.sizingOptions = []
         host.frame = CGRect(origin: .zero, size: size)
-        panel.contentView = host
+        host.autoresizingMask = [.width, .height]
+        // Files dragged onto the open notch land on the root, around the SwiftUI content.
+        let zone = MainActor.assumeIsolated { DropZone(shelf: shelf) }
+        zone.frame = host.frame
+        zone.addSubview(host)
+        panel.contentView = zone
         panel.orderFrontRegardless()
         self.panel = panel
     }
