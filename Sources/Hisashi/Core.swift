@@ -4,7 +4,7 @@ import Foundation
 // Pure rules: state, actions, reducer, layout. No AppKit, no side effects.
 
 enum Tab: CaseIterable, Equatable {
-    case media, today, notifications, shelf, focus, life
+    case media, today, notifications, shelf, status, life
 }
 
 enum Tone: Equatable {

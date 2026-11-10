@@ -245,8 +245,8 @@ struct TabPane: View {
                 TodayPane(model: model)
             case .notifications:
                 HistoryPane(items: model.state.history, clear: model.clearHistory, open: model.openHistory)
-            case .focus:
-                FocusPane(items: CI.feed(agents: model.state.agents, runs: model.state.runs))
+            case .status:
+                StatusPane(items: CI.feed(agents: model.state.agents, runs: model.state.runs))
             default: Placeholder(tab: model.state.tab)
             }
         }
@@ -278,7 +278,7 @@ extension Tab {
         case .today: return "calendar"
         case .notifications: return "bell"
         case .shelf: return "tray"
-        case .focus: return "scope"
+        case .status: return "gauge.with.dots.needle.33percent"
         case .life: return "leaf"
         }
     }
@@ -289,7 +289,7 @@ extension Tab {
         case .today: return "Today"
         case .notifications: return "Notifications"
         case .shelf: return "Shelf"
-        case .focus: return "Focus"
+        case .status: return "Status"
         case .life: return "Seikatsu"
         }
     }

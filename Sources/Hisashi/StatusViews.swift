@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// Focus tab: Claude sessions and CI runs in one feed, work in progress on top.
-struct FocusPane: View {
-    let items: [FocusItem]
+/// Status tab: Claude sessions and CI runs in one feed, work in progress on top.
+struct StatusPane: View {
+    let items: [StatusItem]
 
     var body: some View {
         if items.isEmpty {
@@ -17,7 +17,7 @@ struct FocusPane: View {
                 }
         } else {
             VStack(spacing: 2) {
-                ForEach(items) { FocusRow(item: $0) }
+                ForEach(items) { StatusRow(item: $0) }
                 Spacer(minLength: 0)
             }
             .animation(.spring(response: 0.4, dampingFraction: 0.85), value: items.map(\.id))
@@ -25,8 +25,8 @@ struct FocusPane: View {
     }
 }
 
-private struct FocusRow: View {
-    let item: FocusItem
+private struct StatusRow: View {
+    let item: StatusItem
     @State private var isHovered = false
 
     var body: some View {
@@ -43,7 +43,7 @@ private struct FocusRow: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            FocusTime(item: item).frame(width: 52, alignment: .trailing)
+            StatusTime(item: item).frame(width: 52, alignment: .trailing)
         }
         .padding(.horizontal, 8)
         .frame(height: 28)
@@ -86,8 +86,8 @@ private struct FocusRow: View {
 }
 
 /// Time on a row: live while it runs, the age once it is done.
-private struct FocusTime: View {
-    let item: FocusItem
+private struct StatusTime: View {
+    let item: StatusItem
 
     var body: some View {
         if let since {

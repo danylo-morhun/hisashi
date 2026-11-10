@@ -1,6 +1,6 @@
 import Foundation
 
-// Pure rules for GitHub Actions runs and the focus tab. No AppKit, no side effects.
+// Pure rules for GitHub Actions runs and the status tab. No AppKit, no side effects.
 
 /// One workflow run on GitHub Actions.
 struct CIRun: Equatable, Identifiable {
@@ -42,8 +42,8 @@ struct CIRun: Equatable, Identifiable {
     }
 }
 
-/// One row of the focus tab: a Claude session or a CI run.
-enum FocusItem: Equatable, Identifiable {
+/// One row of the status tab: a Claude session or a CI run.
+enum StatusItem: Equatable, Identifiable {
     case agent(AgentSession)
     case run(CIRun)
 
@@ -132,13 +132,13 @@ enum CI {
         runs.filter { $0.isActive && $0.isMine }.max { $0.started < $1.started }
     }
 
-    /// The focus tab's rows. Work in progress first, newest on top, then the rest by time.
+    /// The status tab's rows. Work in progress first, newest on top, then the rest by time.
     /// Only the latest run of a workflow on a branch counts; an older one says nothing new.
-    static func feed(agents: [AgentSession], runs: [CIRun], limit: Int = 5) -> [FocusItem] {
+    static func feed(agents: [AgentSession], runs: [CIRun], limit: Int = 5) -> [StatusItem] {
         var seen = Set<String>()
         let latest = runs.sorted { $0.started > $1.started }
             .filter { seen.insert($0.repo + "|" + $0.workflow + "|" + $0.branch).inserted }
-        let items = agents.map(FocusItem.agent) + latest.map(FocusItem.run)
+        let items = agents.map(StatusItem.agent) + latest.map(StatusItem.run)
         return Array(items.sorted { a, b in
             a.isActive != b.isActive ? a.isActive : a.updated > b.updated
         }.prefix(limit))
