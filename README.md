@@ -5,7 +5,7 @@ notifications, Claude Code sessions and CI runs.
 
 the closed notch shows what is going on: the playing track with album art and an equalizer,
 volume and brightness levels instead of the system popup, other apps' notifications
-the progress of a running Claude Code session and the jobs of a CI run you started. hovering the notch opens the panel.
+the progress of a running Claude Code session and a CI run you started. hovering the notch opens the panel.
 
 ## tabs
 
@@ -37,8 +37,8 @@ clicking a session brings its terminal to the front.
 runs come from GitHub Actions on the repos pushed to in the last week, for every account
 `gh` is signed in to (tokens are taken with `gh auth token`). a finished run shows as a notice:
 a pass goes away by itself, a failure stays with a rerun button.
-while a run of yours is going, the bottom of the closed notch's ears carries
-one segment per job: green done, orange running, grey waiting, red failed. clicking a run opens it on GitHub.
+while a run of yours is going, the closed notch shows a branch sign and its time;
+beside a working Claude Code session the sign sits next to the spark. clicking a run opens it on GitHub.
 
 ## permissions
 
