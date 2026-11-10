@@ -27,6 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let calendar = CalendarWatch()
     private let weather = WeatherWatch()
     private let power = PowerWatch()
+    private let github = MainActor.assumeIsolated { GitHubWatch() }
     private let entry = KeyEntry()
     private var store: NoticeStore?
     private var termination: DispatchSourceSignal?
@@ -51,6 +52,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         startNotices()
         startClaude()
         startToday()
+        startCI()
         // Dev aid: `open build/Hisashi.app --args --pinned` starts open.
         if CommandLine.arguments.contains("--pinned") { model?.send(.togglePin) }
         // Dev aid: `--today` starts on the today tab.
@@ -112,6 +114,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         audio.setTarget(nil)
         banners.stop()
         claude.stop()
+        MainActor.assumeIsolated { github.stop() }
+    }
+
+    /// GitHub Actions runs of the repos pushed to lately, on every account `gh` knows.
+    private func startCI() {
+        guard let model else { return }
+        MainActor.assumeIsolated {
+            github.onRuns = { model.send(.runs($0, fresh: $1, at: Date())) }
+            github.start()
+        }
     }
 
     /// Claude Code sessions, told by their hooks (scripts/claude-hook.sh).
@@ -160,6 +172,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             if effect == .press(Reminders.joinLabel), let event = Reminders.event(of: notice, in: model.state.today, at: Date()) {
                 TodayLinks.open(event)
+                return
+            }
+            // A CI notice opens the run, its pull request or reruns what failed.
+            if let id = CI.run(ofNotice: notice.id) {
+                let run = model.state.runs.first { $0.id == id }
+                switch effect {
+                case .press(CI.rerunLabel): if let run, let github = self?.github { MainActor.assumeIsolated { github.rerun(run) } }
+                case .press(CI.pullLabel): Browser.open(run?.pullURL)
+                case .open: Browser.open(run?.url)
+                default: break
+                }
                 return
             }
             // A Claude notice opens the Terminal tab of its session; closing it needs nothing more.
