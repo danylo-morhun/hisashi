@@ -113,22 +113,41 @@ private struct StatusTime: View {
     }
 }
 
-/// A run's state as a mark: a ring filling with its jobs while it runs, a check or a cross after.
+/// A run's state as a mark: its job segments while it runs, a check or a cross after.
 struct RunMark: View {
     let run: CIRun
-    var size: CGFloat = 12
 
     var body: some View {
-        Group {
-            switch run.status {
-            case .queued: ProgressRing(progress: 0, tint: Theme.muted)
-            case .running: ProgressRing(progress: run.progress, tint: Theme.color(.warning))
-            case .passed: StatusMark(tone: .success)
-            case .failed: StatusMark(tone: .failure)
-            case .cancelled: StatusMark(tone: .neutral)
+        switch run.status {
+        case .queued, .running: JobSegments(jobs: run.jobs, gap: 1.5).frame(width: 16, height: 2)
+        case .passed: StatusMark(tone: .success).frame(width: 12, height: 12)
+        case .failed: StatusMark(tone: .failure).frame(width: 12, height: 12)
+        case .cancelled: StatusMark(tone: .neutral).frame(width: 12, height: 12)
+        }
+    }
+}
+
+/// One short bar per job: green done, orange running, grey waiting, red failed.
+struct JobSegments: View {
+    let jobs: [CIRun.Job]
+    var gap: CGFloat = 3
+
+    var body: some View {
+        HStack(spacing: gap) {
+            ForEach(Array(CI.segments(jobs).enumerated()), id: \.offset) { _, job in
+                Capsule().fill(Self.color(job))
             }
         }
-        .frame(width: size, height: size)
+        .animation(.easeOut(duration: 0.3), value: jobs)
+    }
+
+    static func color(_ job: CIRun.Job) -> Color {
+        switch job {
+        case .waiting: return Color(hex: 0x3A3A3C)
+        case .running: return Theme.color(.warning)
+        case .passed: return Theme.color(.success)
+        case .failed: return Theme.color(.failure)
+        }
     }
 }
 
@@ -160,23 +179,6 @@ struct StatusMark: View {
     }
 }
 
-struct ProgressRing: View {
-    let progress: Double
-    let tint: Color
-    var line: CGFloat = 2.5
-
-    var body: some View {
-        ZStack {
-            Circle().stroke(Theme.raised, lineWidth: line)
-            Circle().trim(from: 0, to: progress)
-                .stroke(tint, style: StrokeStyle(lineWidth: line, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-        }
-        .padding(line / 2)
-        .animation(.easeOut(duration: 0.4), value: progress)
-    }
-}
-
 /// Claude's spark standing still, for a session that waits.
 struct SparkMark: Shape {
     func path(in rect: CGRect) -> Path {
@@ -190,23 +192,56 @@ struct SparkMark: Shape {
     }
 }
 
-/// Closed notch while CI runs: the ring left of the camera, elapsed time right of it.
+/// A git branch: two commits on a line, a third joining from the side.
+struct BranchMark: Shape {
+    func path(in rect: CGRect) -> Path {
+        let u = min(rect.width, rect.height) / 16
+        func pt(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: rect.minX + x * u, y: rect.minY + y * u) }
+        var p = Path()
+        for (x, y) in [(4.5, 3.5), (4.5, 12.5), (11.5, 5.5)] {
+            p.addEllipse(in: CGRect(x: rect.minX + (x - 1.8) * u, y: rect.minY + (y - 1.8) * u, width: 3.6 * u, height: 3.6 * u))
+        }
+        p.move(to: pt(4.5, 5.3)); p.addLine(to: pt(4.5, 10.7))
+        p.move(to: pt(11.5, 7.3)); p.addCurve(to: pt(4.5, 10.7), control1: pt(11.5, 10.3), control2: pt(4.5, 8.8))
+        return p
+    }
+}
+
+/// The jobs of a running CI run, on a thin chin the closed notch grows under the camera
+/// (the camera itself has no pixels to draw on).
+struct CIChin: View {
+    let run: CIRun
+    let notch: CGSize
+
+    var body: some View {
+        JobSegments(jobs: run.jobs)
+            .frame(width: notch.width - 12, height: 2)
+            .frame(height: Layout.ciChin - 1, alignment: .top)
+            .padding(.top, 1)
+    }
+}
+
+/// Closed notch while CI runs: a branch left of the camera, elapsed time right of it, jobs below.
 struct CIActivity: View {
     let run: CIRun
     let notch: CGSize
 
     var body: some View {
-        HStack(spacing: 0) {
-            ProgressRing(progress: run.progress, tint: Theme.color(.warning), line: 2)
-                .frame(width: 16, height: 16)
-            Spacer(minLength: notch.width)
-            TimelineView(.periodic(from: run.started, by: 1)) { context in
-                Text(Agents.elapsed(context.date.timeIntervalSince(run.started)))
-                    .font(.system(size: 12, weight: .semibold).monospacedDigit())
-                    .foregroundStyle(Theme.color(.warning))
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                BranchMark()
+                    .stroke(Theme.color(.warning), style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
+                    .frame(width: 14, height: 14)
+                Spacer(minLength: notch.width)
+                TimelineView(.periodic(from: run.started, by: 1)) { context in
+                    Text(Agents.elapsed(context.date.timeIntervalSince(run.started)))
+                        .font(.system(size: 12, weight: .semibold).monospacedDigit())
+                        .foregroundStyle(Theme.color(.warning))
+                }
             }
+            .padding(.horizontal, 11)
+            .frame(height: notch.height)
+            CIChin(run: run, notch: notch)
         }
-        .padding(.horizontal, 11)
-        .frame(height: notch.height)
     }
 }

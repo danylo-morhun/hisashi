@@ -5,6 +5,8 @@ import Foundation
 /// One workflow run on GitHub Actions.
 struct CIRun: Equatable, Identifiable {
     enum Status: Equatable { case queued, running, passed, failed, cancelled }
+    /// One job of the run, as its segment shows it.
+    enum Job: Equatable { case waiting, running, passed, failed }
 
     let id: Int
     /// Owner and name, "danylo-morhun/hisashi".
@@ -21,8 +23,8 @@ struct CIRun: Equatable, Identifiable {
     var updated: Date
     let url: URL
     var pullRequest: Int?
-    var jobsDone = 0
-    var jobsTotal = 0
+    /// Jobs in the order GitHub lists them.
+    var jobs: [Job] = []
     /// The job running now, or the one that failed.
     var job: String?
 
@@ -34,11 +36,6 @@ struct CIRun: Equatable, Identifiable {
 
     var pullURL: URL? {
         pullRequest.flatMap { URL(string: "https://github.com/\(repo)/pull/\($0)") }
-    }
-
-    /// Share of jobs done, for the ring; a run with no jobs listed yet shows a sliver.
-    var progress: Double {
-        jobsTotal > 0 ? max(0.08, Double(jobsDone) / Double(jobsTotal)) : 0.08
     }
 }
 
@@ -142,6 +139,18 @@ enum CI {
         return Array(items.sorted { a, b in
             a.isActive != b.isActive ? a.isActive : a.updated > b.updated
         }.prefix(limit))
+    }
+
+    /// Segments drawn for a run's jobs: one per job, at most `limit`. Past that, neighbours
+    /// share a segment, which shows the worst of them. A run that lists no jobs yet shows one waiting.
+    static func segments(_ jobs: [CIRun.Job], limit: Int = 8) -> [CIRun.Job] {
+        guard !jobs.isEmpty else { return [.waiting] }
+        guard jobs.count > limit else { return jobs }
+        func rank(_ j: CIRun.Job) -> Int { [.passed: 0, .waiting: 1, .running: 2, .failed: 3][j] ?? 0 }
+        return (0..<limit).map { i in
+            let part = jobs[i * jobs.count / limit ..< (i + 1) * jobs.count / limit]
+            return part.max { rank($0) < rank($1) } ?? .waiting
+        }
     }
 
     /// What a run row says after the repo.

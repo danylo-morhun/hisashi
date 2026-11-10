@@ -60,7 +60,7 @@ struct NotchView: View {
             .onChange(of: target) { old, new in
                 // Losing the closed activity: let the icons fade first, then narrow,
                 // the reverse of how they arrived. Everything else moves at once.
-                let fadingActivity = mode == .compact && new.width < old.width && new.height == old.height
+                let fadingActivity = mode == .compact && new.width < old.width && new.height <= old.height
                 // A notice drops out of the camera with a bounce; everything else keeps the calm spring.
                 let dropping = mode == .notice && old.height <= model.notch.height + 1 && new.height > old.height
                 withAnimation((dropping ? Self.drop : Self.spring).delay(fadingActivity ? 0.24 : 0)) {
@@ -75,8 +75,10 @@ struct NotchView: View {
         switch mode {
         case .compact:
             if let agent = model.state.agent {
-                AgentActivity(agent: agent, working: model.state.agents.filter(\.working).count,
-                              run: model.state.ciRun, notch: model.notch)
+                VStack(spacing: 0) {
+                    AgentActivity(agent: agent, working: model.state.agents.filter(\.working).count, notch: model.notch)
+                    if let run = model.state.ciRun { CIChin(run: run, notch: model.notch).transition(.opacity) }
+                }
                     .frame(width: Layout.size(model.state, notch: model.notch).width)
                     .transition(.activityFade)
             } else if let timer = model.state.today.timer {

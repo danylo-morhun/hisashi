@@ -21,7 +21,7 @@ final class GitHubWatch {
     private var reposLoaded: Date?
     private var cache: [String: Cached] = [:]
     /// Jobs as last read, by run id and the run's update time, so a quiet run is not asked again.
-    private var jobs: [Int: (updated: Date, done: Int, total: Int, job: String?)] = [:]
+    private var jobs: [Int: (updated: Date, jobs: [CIRun.Job], job: String?)] = [:]
     private var task: Task<Void, Never>?
 
     func start() {
@@ -122,15 +122,13 @@ final class GitHubWatch {
         for i in runs.indices where runs[i].isActive || runs[i].status == .failed {
             let run = runs[i]
             if let known = jobs[run.id], known.updated == run.updated, !run.isActive {
-                runs[i].jobsDone = known.done
-                runs[i].jobsTotal = known.total
+                runs[i].jobs = known.jobs
                 runs[i].job = known.job
                 continue
             }
             if let read = await loadJobs(run, account: account) {
-                jobs[run.id] = (run.updated, read.done, read.total, read.job)
-                runs[i].jobsDone = read.done
-                runs[i].jobsTotal = read.total
+                jobs[run.id] = (run.updated, read.jobs, read.job)
+                runs[i].jobs = read.jobs
                 runs[i].job = read.job
             }
         }
@@ -142,14 +140,20 @@ final class GitHubWatch {
         let jobs: [Job]
     }
 
-    private func loadJobs(_ run: CIRun, account: Account) async -> (done: Int, total: Int, job: String?)? {
+    private func loadJobs(_ run: CIRun, account: Account) async -> (jobs: [CIRun.Job], job: String?)? {
         guard let (data, _) = try? await request("/repos/\(run.repo)/actions/runs/\(run.id)/jobs?per_page=50", account: account),
               let list = try? Self.decoder.decode(Jobs.self, from: data) else { return nil }
-        let done = list.jobs.filter { $0.status == "completed" }.count
+        let states: [CIRun.Job] = list.jobs.map { job in
+            switch job.status {
+            case "completed": return ["failure", "timed_out", "startup_failure"].contains(job.conclusion ?? "") ? .failed : .passed
+            case "in_progress": return .running
+            default: return .waiting
+            }
+        }
         let job = run.status == .failed
             ? list.jobs.first { ["failure", "timed_out"].contains($0.conclusion ?? "") }?.name
             : list.jobs.first { $0.status == "in_progress" }?.name
-        return (done, list.jobs.count, job)
+        return (states, job)
     }
 
     private func request(_ path: String, account: Account, method: String = "GET",
