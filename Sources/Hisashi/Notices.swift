@@ -385,11 +385,14 @@ enum Photos {
 enum Senders {
     private static var cache: [String: NSImage] = [:]
 
-    static func icon(_ app: String) -> NSImage? {
-        if let hit = cache[app] { return hit }
-        guard let url = BannerWatch.appURL(named: app) else { return nil }
+    /// By bundle id when known, else by the name the banner shows.
+    static func icon(_ app: String, bundle: String? = nil) -> NSImage? {
+        let key = bundle ?? app
+        if let hit = cache[key] { return hit }
+        let byBundle = bundle.flatMap { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) }
+        guard let url = byBundle ?? BannerWatch.appURL(named: app) else { return nil }
         let image = NSWorkspace.shared.icon(forFile: url.path)
-        cache[app] = image
+        cache[key] = image
         return image
     }
 }
