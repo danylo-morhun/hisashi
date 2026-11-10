@@ -79,6 +79,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 ]))
             }
         }
+        // Dev aid: `--sample-ci` shows a made-up run of five jobs instead of the real ones.
+        if CommandLine.arguments.contains("--sample-ci") {
+            let run = CIRun(id: 1, repo: "danylo-morhun/hisashi", workflow: "CI", branch: "main", event: "push",
+                            actor: "me", account: "me", status: .running, started: Date().addingTimeInterval(-160),
+                            updated: Date(), url: URL(string: "https://github.com")!,
+                            jobs: [.passed, .passed, .passed, .running, .waiting], job: "test")
+            model?.send(.runs([run], fresh: [], at: Date()))
+        }
         // Dev aid: `--hud volume|brightness 0.5` shows the HUD at that level.
         if let i = CommandLine.arguments.firstIndex(of: "--hud"), CommandLine.arguments.count > i + 2,
            let level = Float(CommandLine.arguments[i + 2]) {
@@ -124,7 +132,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let model else { return }
         MainActor.assumeIsolated {
             github.onRuns = { model.send(.runs($0, fresh: $1, at: Date())) }
-            github.start()
+            if !CommandLine.arguments.contains("--sample-ci") { github.start() }
         }
     }
 
