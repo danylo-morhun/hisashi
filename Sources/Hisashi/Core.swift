@@ -388,6 +388,8 @@ enum NotchMode: Equatable {
 
 struct NotchState: Equatable {
     var isHovering = false
+    /// A file is dragged over the notch: it opens for the drop, over a notice too.
+    var isDropping = false
     var isPinned = false
     var tab: Tab = .media
     var event: NotchEvent?
@@ -445,6 +447,7 @@ struct NotchState: Equatable {
     var notice: AppNotice? { notices.last }
 
     var mode: NotchMode {
+        if isDropping { return .open }
         if event != nil { return .event }
         if hud != nil { return .hud }
         // Hovering a notice keeps it, it does not open the panel.
@@ -456,6 +459,7 @@ struct NotchState: Equatable {
 
 enum NotchAction {
     case hover(Bool)
+    case dropping(Bool)
     case togglePin
     case unpin
     case select(Tab)
@@ -506,6 +510,7 @@ func reduce(_ state: NotchState, _ action: NotchAction) -> NotchState {
     var s = state
     switch action {
     case .hover(let inside): s.isHovering = inside
+    case .dropping(let over): s.isDropping = over
     case .togglePin: s.isPinned.toggle()
     case .unpin: s.isPinned = false
     case .select(let tab): s.tab = tab
