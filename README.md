@@ -14,7 +14,7 @@ the progress of a running Claude Code session and a CI run you started. hovering
 | now playing   | the current track from any player, with playback controls, or Spotify picks                  |
 | today         | today's events from all calendars with a join button for calls, weather, battery and a timer |
 | notifications | the Notification Center list, one stack per app, with clearing                               |
-| shelf         | not built yet                                                                                |
+| shelf         | files kept for later, to drag out, AirDrop, share or move                                    |
 | status        | Claude Code sessions and GitHub Actions runs in one feed, work in progress first             |
 | seikatsu      | not built yet                                                                                |
 
@@ -25,6 +25,15 @@ from your Spotify: a mix, liked songs, top tracks, forgotten ones and your playl
 plays on through that playlist; any other starts a radio from it: a private "hisashi radio"
 playlist holding the one song, after which Spotify autoplay goes on with similar songs. this needs Spotify Premium:
 connect once in the browser, the token is kept in `~/Library/Application Support/Hisashi/spotify.json`.
+
+## shelf
+
+drag a file over the notch and let go on one of two targets: keep it on the shelf, or send it
+with AirDrop. the shelf keeps a reference to the file, so it follows a rename or a move;
+files that would vanish soon (the floating screenshot, browser and Mail drags, temporary folders)
+are copied into `~/Library/Application Support/Hisashi/Shelf`. files stay for a week.
+dragging them into an app leaves them on the shelf; a file moved away, or the clear button, takes it off.
+the pile drags out whole, a click fans it out into single files.
 
 ## notifications
 
