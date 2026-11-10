@@ -75,11 +75,16 @@ struct NotchView: View {
         switch mode {
         case .compact:
             if let agent = model.state.agent {
-                AgentActivity(agent: agent, working: model.state.agents.filter(\.working).count, notch: model.notch)
+                AgentActivity(agent: agent, working: model.state.agents.filter(\.working).count,
+                              run: model.state.ciRun, notch: model.notch)
                     .frame(width: Layout.size(model.state, notch: model.notch).width)
                     .transition(.activityFade)
             } else if let timer = model.state.today.timer {
                 TimerActivity(timer: timer, notch: model.notch)
+                    .frame(width: Layout.size(model.state, notch: model.notch).width)
+                    .transition(.activityFade)
+            } else if let run = model.state.ciRun {
+                CIActivity(run: run, notch: model.notch)
                     .frame(width: Layout.size(model.state, notch: model.notch).width)
                     .transition(.activityFade)
             } else if let np = model.state.activity {
@@ -240,6 +245,8 @@ struct TabPane: View {
                 TodayPane(model: model)
             case .notifications:
                 HistoryPane(items: model.state.history, clear: model.clearHistory, open: model.openHistory)
+            case .focus:
+                FocusPane(items: CI.feed(agents: model.state.agents, runs: model.state.runs))
             default: Placeholder(tab: model.state.tab)
             }
         }

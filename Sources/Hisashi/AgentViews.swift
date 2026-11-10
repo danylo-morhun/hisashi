@@ -2,10 +2,11 @@ import AppKit
 import SwiftUI
 
 /// Closed notch while Claude works: the spark turns left of the camera, elapsed time right of it.
-/// A second working session shows as a count beside the spark.
+/// A second working session shows as a count beside the spark, a CI run as a small ring.
 struct AgentActivity: View {
     let agent: AgentSession
     let working: Int
+    var run: CIRun?
     let notch: CGSize
 
     var body: some View {
@@ -14,6 +15,11 @@ struct AgentActivity: View {
                 Spark().frame(width: 16, height: 16)
                 if working > 1 {
                     Text("\(working)").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.muted)
+                }
+                if let run {
+                    ProgressRing(progress: run.progress, tint: Theme.color(.warning), line: 2.5)
+                        .frame(width: 10, height: 10)
+                        .transition(.opacity)
                 }
             }
             Spacer(minLength: notch.width)
