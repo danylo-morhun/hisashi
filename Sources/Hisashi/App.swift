@@ -188,6 +188,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         model.clearCenter = { [weak self] app in self?.banners.clear(app: app) }
         model.openHistory = { Apps.open($0) }
+        model.send(.restoreCleared(ClearedApps.load()))
+        model.clearedChanged = { ClearedApps.save($0) }
         // The notifications tab mirrors Notification Center when the store is readable.
         let store = NoticeStore { model.send(.stored($0, at: Date())) }
         if store.start() { self.store = store }
