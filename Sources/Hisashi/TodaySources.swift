@@ -171,6 +171,34 @@ final class PowerWatch {
     }
 }
 
+/// The timer's alarm: the tone Clock rings for timers, over and over until answered,
+/// for half a minute at most. Glass when the tone is not on this Mac.
+final class TimerAlarm {
+    private static let tone = URL(fileURLWithPath:
+        "/System/Library/PrivateFrameworks/ToneLibrary.framework/Resources/Ringtones/Radial-EncoreInfinitum.m4r")
+    private static let longest: TimeInterval = 30
+    private var sound: NSSound?
+    private var cutoff: DispatchWorkItem?
+
+    func start() {
+        stop()
+        guard let sound = NSSound(contentsOf: Self.tone, byReference: true) ?? NSSound(named: "Glass")?.copy() as? NSSound else { return }
+        sound.loops = true
+        sound.play()
+        self.sound = sound
+        let cutoff = DispatchWorkItem { [weak self] in self?.stop() }
+        self.cutoff = cutoff
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.longest, execute: cutoff)
+    }
+
+    func stop() {
+        cutoff?.cancel()
+        cutoff = nil
+        sound?.stop()
+        sound = nil
+    }
+}
+
 enum TodayLinks {
     /// The call when the event has one, else Calendar.
     static func open(_ event: DayEvent?) {
