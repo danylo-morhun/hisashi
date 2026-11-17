@@ -98,6 +98,22 @@ final class NoticeStore {
     }
 }
 
+/// Apps cleared in the notch, kept in ~/Library/Application Support/Hisashi/cleared.json.
+enum ClearedApps {
+    private static let file = FileManager.default.homeDirectoryForCurrentUser
+        .appending(path: "Library/Application Support/Hisashi/cleared.json")
+
+    static func load() -> [String: Date] {
+        guard let data = try? Data(contentsOf: file) else { return [:] }
+        return (try? JSONDecoder().decode([String: Date].self, from: data)) ?? [:]
+    }
+
+    static func save(_ cleared: [String: Date]) {
+        guard let data = try? JSONEncoder().encode(cleared) else { return }
+        try? data.write(to: file, options: .atomic)
+    }
+}
+
 /// App names and launching by bundle id; Notification Center stores ids, often lowercased.
 enum Apps {
     private static var names: [String: String] = [:]
