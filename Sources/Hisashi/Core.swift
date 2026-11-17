@@ -171,6 +171,8 @@ enum History {
 
     /// Takes a fresh copy of the store. Photos from banners stay with their notification;
     /// banners the store now has, or that waited too long, stop being pending.
+    /// A cleared app is remembered while the store still holds what was cleared: Notification
+    /// Center does not always drop it (system senders such as Game Mode never leave).
     static func store(_ items: [HistoryItem], over state: NotchState, at now: Date) -> NotchState {
         var s = state
         var photos: [String: Data] = [:]
@@ -182,7 +184,9 @@ enum History {
         }
         let ids = Set(items.map(\.id))
         s.recent = s.recent.filter { !ids.contains($0.id) && now.timeIntervalSince($0.date) < pending }
-        s.clearedApps = s.clearedApps.filter { now.timeIntervalSince($0.value) < pending }
+        s.clearedApps = s.clearedApps.filter { app, at in
+            now.timeIntervalSince(at) < pending || items.contains { $0.app == app && $0.date <= at }
+        }
         return s
     }
 
@@ -430,7 +434,8 @@ struct NotchState: Equatable {
     var stored: [HistoryItem] = []
     /// Banners shown in the notch that the store has not caught up with yet.
     var recent: [HistoryItem] = []
-    /// Apps cleared from the notch, with when; their older notifications stay hidden until the store agrees.
+    /// Apps cleared from the notch, with when; their older notifications stay hidden until the store
+    /// drops them. Kept on disk, so they stay hidden after a restart.
     var clearedApps: [String: Date] = [:]
 
     /// Everything the notifications tab lists.
@@ -503,6 +508,8 @@ enum NotchAction {
     case remember(HistoryItem)
     /// Clears one app's stack, or every stack when nil.
     case clearHistory(app: String?, at: Date)
+    /// Apps cleared before the last quit, read back from disk.
+    case restoreCleared([String: Date])
     case players([NowPlaying])
     /// Sound is coming from the app being listened to.
     case heard
@@ -553,6 +560,7 @@ func reduce(_ state: NotchState, _ action: NotchAction) -> NotchState {
     case .expireNotice(let id, let now): s.notices = Notices.expire(id, in: s.notices, at: now)
     case .stored(let items, let now): s = History.store(items, over: s, at: now)
     case .remember(let item): s.recent = s.recent.filter { $0.id != item.id } + [item]
+    case .restoreCleared(let cleared): s.clearedApps.merge(cleared) { max($0, $1) }
     case .clearHistory(let app, let now):
         for name in app.map({ [$0] }) ?? Array(Set(s.history.map(\.app))) { s.clearedApps[name] = now }
     case .players(let reported):
