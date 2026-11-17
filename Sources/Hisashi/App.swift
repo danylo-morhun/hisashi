@@ -261,10 +261,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.ignoresMouseEvents = !inside
         if !inside { dwell?.cancel(); dwell = nil }
         guard inside != model.state.isHovering else { return }
-        // A closed notch opens only once the pointer rests on it, so passing by does nothing.
-        // Notices and the HUD answer hover at once.
+        // A closed notch opens only once the pointer rests on it, so passing by does nothing;
+        // the tick comes at once, as the pointer arrives. Notices and the HUD answer hover at once.
         if inside, model.state.mode == .compact {
             guard dwell == nil else { return }
+            Haptics.tap()
             let work = DispatchWorkItem { [weak self] in
                 self?.dwell = nil
                 self?.rested(NSEvent.mouseLocation)
@@ -287,10 +288,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func hover(_ inside: Bool) {
-        guard let model else { return }
-        let wasCompact = model.state.mode == .compact
-        model.send(.hover(inside))
-        if wasCompact && model.state.mode == .open { Haptics.tap() }
+        model?.send(.hover(inside))
     }
 }
 
