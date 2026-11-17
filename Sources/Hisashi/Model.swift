@@ -16,8 +16,8 @@ final class NotchModel {
     var openHistory: (HistoryItem) -> Void = { _ in }
     /// Set by the shell: opens an event of the agenda.
     var openEvent: (DayEvent) -> Void = { _ in }
-    /// Set by the shell: the sound of the timer running out.
-    var timerDone: () -> Void = {}
+    /// Set by the shell: the timer's alarm, ringing while its notice waits to be answered.
+    var timerRinging: (Bool) -> Void = { _ in }
     /// Set by the shell: typing the timer's minutes started or ended.
     var entryChanged: (Bool) -> Void = { _ in }
     @ObservationIgnored private var timerTask: Task<Void, Never>?
@@ -37,14 +37,15 @@ final class NotchModel {
         let next = reduce(state, action)
         // Every notice that just started leaving is removed once its exit has played.
         let leaving = next.notices.filter { n in n.leaving != nil && state.notices.contains { $0.id == n.id && $0.leaving == nil } }
-        let timerFinished = next.notices.contains { n in n.id.hasPrefix(Today.timerPrefix) && !state.notices.contains { $0.id == n.id } }
+        let ringing = Today.ringing(next)
         let entryFlipped = (next.today.entry != nil) != (state.today.entry != nil)
+        let ringFlipped = ringing != Today.ringing(state)
         if next != state { state = next }
         if entryFlipped { entryChanged(state.today.entry != nil) }
         if case .show = action { scheduleDismiss() }
         if case .showHud = action { scheduleHudDismiss() }
         for notice in leaving { finishLeaving(notice.id) }
-        if timerFinished { timerDone() }
+        if ringFlipped { timerRinging(ringing) }
         syncNoticeClock()
         syncTimer()
     }
