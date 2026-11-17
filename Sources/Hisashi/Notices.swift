@@ -1,4 +1,6 @@
 import AppKit
+import UniformTypeIdentifiers
+import os
 import ApplicationServices
 
 // Notifications of other apps, taken from the system banners through Accessibility.
@@ -385,14 +387,90 @@ enum Photos {
 enum Senders {
     private static var cache: [String: NSImage] = [:]
 
-    /// By bundle id when known, else by the name the banner shows.
-    static func icon(_ app: String, bundle: String? = nil) -> NSImage? {
+    /// By bundle id when known, else by the name the banner shows. System senders such as
+    /// AirDrop or Login Items have no app: their icon sits in a notification bundle.
+    static func icon(_ app: String, bundle: String? = nil) -> NSImage {
         let key = bundle ?? app
         if let hit = cache[key] { return hit }
-        let byBundle = bundle.flatMap { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) }
-        guard let url = byBundle ?? BannerWatch.appURL(named: app) else { return nil }
-        let image = NSWorkspace.shared.icon(forFile: url.path)
+        let id = bundle.map(SystemSenders.plain)
+        let byBundle = id.flatMap { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) }
+            .flatMap { $0.pathExtension == "app" ? $0 : nil }
+        let image = byBundle.map { NSWorkspace.shared.icon(forFile: $0.path) }
+            ?? id.flatMap(SystemSenders.icon(bundle:))
+            ?? BannerWatch.appURL(named: app).map { NSWorkspace.shared.icon(forFile: $0.path) }
+            ?? SystemSenders.icon(named: app)
+            ?? unknown(key)
         cache[key] = image
         return image
+    }
+
+    /// The plain app icon, and a line in the log naming the sender to teach the lookup later.
+    private static func unknown(_ sender: String) -> NSImage {
+        Logger(subsystem: "hisashi", category: "senders").notice("no icon for sender \(sender, privacy: .public)")
+        return NSWorkspace.shared.icon(for: .application)
+    }
+}
+
+/// Senders that are part of macOS rather than apps: AirDrop (sharingd), Login Items, Bluetooth.
+/// Notification Center keeps their name and icon in /System/Library/UserNotifications/Bundles.
+enum SystemSenders {
+    private static let folder = URL(fileURLWithPath: "/System/Library/UserNotifications/Bundles")
+    /// Daemons that post without a notification bundle, with the app that stands for them.
+    private static let apps = ["com.apple.sharingd": "/System/Library/CoreServices/Finder.app/Contents/Applications/AirDrop.app"]
+
+    /// Notification Center stores system senders as "_SYSTEM_CENTER_:com.apple.sharingd".
+    static func plain(_ bundle: String) -> String {
+        bundle.split(separator: ":").last.map(String.init) ?? bundle
+    }
+
+    /// The name the banner shows for a system sender, if it is one.
+    static func name(bundle: String) -> String? {
+        let id = plain(bundle)
+        if let path = apps[id] { return FileManager.default.displayName(atPath: path).replacingOccurrences(of: ".app", with: "") }
+        return title(id)
+    }
+
+    static func icon(bundle: String) -> NSImage? {
+        let id = plain(bundle)
+        if let path = apps[id] { return NSWorkspace.shared.icon(forFile: path) }
+        guard let info = info(id), let found = Bundle(url: folder.appendingPathComponent(id + ".bundle")) else { return nil }
+        let icons = (info["UNUserNotificationCenter"] as? [String: Any])?["UNNotificationIcons"] as? [String: Any]
+        if let name = icons?["UNNotificationIconDefault"] as? String ?? info["CFBundleIconFile"] as? String,
+           let image = found.image(forResource: name) {
+            return image
+        }
+        if let uti = icons?["UNNotificationIconUTI"] as? String, let type = UTType(uti) {
+            return NSWorkspace.shared.icon(for: type)
+        }
+        return nil
+    }
+
+    /// A banner names its sender only by display name: find the bundle that carries it.
+    static func icon(named name: String) -> NSImage? {
+        if let hit = byName[name] { return icon(bundle: hit) }
+        return nil
+    }
+
+    private static let byName: [String: String] = {
+        var names: [String: String] = [:]
+        for id in apps.keys { if let name = name(bundle: id) { names[name] = id } }
+        let bundles = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
+        for file in bundles where file.hasSuffix(".bundle") {
+            let id = String(file.dropLast(7))
+            if let name = title(id), names[name] == nil { names[name] = id }
+        }
+        return names
+    }()
+
+    /// Display name in the system language; many bundles name themselves only in a localized table.
+    private static func title(_ id: String) -> String? {
+        guard let found = Bundle(url: folder.appendingPathComponent(id + ".bundle")) else { return nil }
+        let name = found.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
+            ?? found.object(forInfoDictionaryKey: "CFBundleName") as? String
+        return name == id ? nil : name
+    }
+
+    private static func info(_ id: String) -> [String: Any]? {
+        NSDictionary(contentsOf: folder.appendingPathComponent(id + ".bundle/Contents/Info.plist")) as? [String: Any]
     }
 }
