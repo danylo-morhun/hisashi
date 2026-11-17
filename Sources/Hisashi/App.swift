@@ -29,7 +29,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let calendar = CalendarWatch()
     private let weather = WeatherWatch()
     private let power = PowerWatch()
-    private let github = MainActor.assumeIsolated { GitHubWatch() }
+    private let alarm = TimerAlarm()
     private let entry = KeyEntry()
     private var store: NoticeStore?
     private var termination: DispatchSourceSignal?
@@ -148,7 +148,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         power.onChange = { model.send(.power($0)) }
         power.start()
         model.openEvent = { TodayLinks.open($0) }
-        model.timerDone = { NSSound(named: "Glass")?.play() }
+        model.timerRinging = { [alarm] in if $0 { alarm.start() } else { alarm.stop() } }
         entry.onKey = { model.send(.entryKey($0, at: Date())) }
         model.entryChanged = { [weak self] typing in
             if typing { self?.entry.start() } else { self?.entry.stop() }
