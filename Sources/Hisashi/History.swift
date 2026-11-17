@@ -105,15 +105,17 @@ enum Apps {
     /// An app still on the Mac. System senders (AirDrop, Login Items) have no app to find,
     /// except Apple's developer tools, which are ordinary apps that can be removed.
     static func installed(_ bundle: String) -> Bool {
-        let system = bundle.hasPrefix("com.apple.") && !bundle.hasPrefix("com.apple.dt.")
+        let id = SystemSenders.plain(bundle)
+        let system = id.hasPrefix("com.apple.") && !id.hasPrefix("com.apple.dt.")
         return system || NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundle) != nil
     }
 
     static func name(_ bundle: String) -> String {
         if let hit = names[bundle] { return hit }
-        let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundle)
+        let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundle).flatMap { $0.pathExtension == "app" ? $0 : nil }
         let name = url.map { FileManager.default.displayName(atPath: $0.path).replacingOccurrences(of: ".app", with: "") }
-            ?? bundle.split(separator: ".").last.map(String.init) ?? bundle
+            ?? SystemSenders.name(bundle: bundle)
+            ?? SystemSenders.plain(bundle).split(separator: ".").last.map(String.init) ?? bundle
         names[bundle] = name
         return name
     }
