@@ -435,14 +435,8 @@ struct NotchState: Equatable {
     /// Calendar, weather, battery, timer.
     var today = TodayState()
 
-    /// GitHub Actions runs of the followed repos, newest first.
-    var runs: [CIRun] = []
-
-    /// The CI run shown beside the camera, if any.
-    var ciRun: CIRun? { CI.shown(runs) }
-
-    /// Something to show beside the camera while closed: Claude at work, the timer, CI or music playing.
-    var hasActivity: Bool { agent != nil || today.timer != nil || ciRun != nil || activity != nil }
+    /// Something to show beside the camera while closed: Claude at work, the timer or music playing.
+    var hasActivity: Bool { agent != nil || today.timer != nil || activity != nil }
 
     var notice: AppNotice? { notices.last }
 
@@ -502,8 +496,6 @@ enum NotchAction {
     case entryKey(EntryKey, at: Date)
     /// Time passed: the timer may be done, a reminder may be due.
     case tick(Date)
-    /// A fresh look at CI; `fresh` holds the repos looked at for the first time.
-    case runs([CIRun], fresh: Set<String>, at: Date)
 }
 
 func reduce(_ state: NotchState, _ action: NotchAction) -> NotchState {
@@ -582,7 +574,6 @@ func reduce(_ state: NotchState, _ action: NotchAction) -> NotchState {
     case .endEntry: s.today.entry = nil
     case .entryKey(let key, let now): s = Today.type(key, in: s, at: now)
     case .tick(let now): s = Today.tick(s, at: now)
-    case .runs(let runs, let fresh, let now): s = CI.apply(runs, fresh: fresh, to: s, at: now)
     }
     return s
 }
@@ -619,8 +610,6 @@ enum Layout {
     static let activityEar: CGFloat = 38
     /// Wider for Claude at work: the elapsed time needs room once it passes ten minutes.
     static let agentEar: CGFloat = 44
-    /// Added to each ear when the CI sign has to share the left one with Claude's spark and count.
-    static let crowdedEar: CGFloat = 10
     /// Width added on each side of the camera for volume and brightness.
     static let hudEar: CGFloat = 76
 
@@ -643,11 +632,10 @@ enum Layout {
         return size(state.mode, activity: state.hasActivity, notch: notch)
     }
 
-    /// Closed: Claude at work, the timer and CI take the wider ears, else music its own.
+    /// Closed: Claude at work and the timer take the wider ears, else music its own.
     static func compactSize(_ state: NotchState, notch: CGSize) -> CGSize {
-        if state.agent != nil || state.today.timer != nil || state.ciRun != nil {
-            let crowded = state.ciRun != nil && state.agents.filter(\.working).count > 1
-            return CGSize(width: notch.width + (agentEar + (crowded ? crowdedEar : 0)) * 2, height: notch.height)
+        if state.agent != nil || state.today.timer != nil {
+            return CGSize(width: notch.width + agentEar * 2, height: notch.height)
         }
         return size(.compact, activity: state.hasActivity, notch: notch)
     }
