@@ -83,6 +83,9 @@ struct AppNotice: Equatable, Identifiable {
     var pressed: String?
     /// Set while the notice animates away; how depends on why.
     var leaving: NoticeExit?
+    /// When its system banner showed up and went away; see `Notices.swap`.
+    var arrived: Date?
+    var expired: Date?
 
     /// Subtitle and body as one line of text under the title.
     var detail: String { [subtitle, body].filter { !$0.isEmpty }.joined(separator: " · ") }
@@ -272,6 +275,11 @@ enum NoticeEffect: Equatable {
 enum Notices {
     /// Most notices kept waiting behind the shown one.
     static let limit = 10
+    /// The system swaps one banner for another when an app updates a notification: AirDrop posts
+    /// "receiving" and then "received" under one request, as two banners half a second apart.
+    /// A persistent banner leaves only when withdrawn or swapped, so one that goes while a banner
+    /// of the same app comes, within this window, is that swap: the two are one notice.
+    static let swap: TimeInterval = 2
 
     /// Adds a notice on top of the queue. The newest shows, the others wait underneath.
     /// One already queued comes back when Notification Center surfaces it again:
@@ -282,15 +290,36 @@ enum Notices {
             if q[i].pressed == nil, q[i].leaving == nil { q[i].actions = notice.actions }
             return q
         }
+        if let i = replaced(by: notice, in: queue) {
+            var q = queue
+            q[i] = notice
+            return q
+        }
         return Array((queue.filter { $0.leaving == nil } + [notice]).suffix(limit))
     }
 
+    /// The notice a new banner takes the place of: one of the same app whose banner just went.
+    static func replaced(by notice: AppNotice, in queue: [AppNotice]) -> Int? {
+        guard let arrived = notice.arrived else { return nil }
+        return queue.lastIndex { n in
+            n.app == notice.app && n.persistent && n.leaving == nil && n.pressed == nil
+                && n.expired.map { arrived.timeIntervalSince($0) < swap } == true
+        }
+    }
+
     /// The system banner is gone. A temporary notice still waiting in the queue goes with it;
-    /// the shown one stays, only without buttons.
-    static func expire(_ id: String, in queue: [AppNotice]) -> [AppNotice] {
+    /// the shown one stays, only without buttons. One whose banner was just swapped for a newer
+    /// one of the same app leaves for good: the newer one says the same, up to date.
+    static func expire(_ id: String, in queue: [AppNotice], at now: Date) -> [AppNotice] {
         guard let i = queue.firstIndex(where: { $0.id == id }) else { return queue }
         var q = queue
-        if i != q.count - 1, !q[i].persistent {
+        q[i].expired = now
+        let swapped = q[i].persistent && q[(i + 1)...].contains { n in
+            n.app == q[i].app && n.arrived.map { now.timeIntervalSince($0) < swap } == true
+        }
+        if swapped, q[i].pressed == nil {
+            q.remove(at: i)
+        } else if i != q.count - 1, !q[i].persistent {
             q.remove(at: i)
         } else if q[i].pressed == nil {
             q[i].actions = []
@@ -467,7 +496,7 @@ enum NotchAction {
     case dismissNotice(String)
     case pressNotice(String, String)
     /// The system banner is gone, and with it the buttons.
-    case expireNotice(String)
+    case expireNotice(String, at: Date)
     /// A fresh copy of Notification Center's list.
     case stored([HistoryItem], at: Date)
     /// A banner the notch just showed, listed before the store has it.
@@ -511,7 +540,9 @@ func reduce(_ state: NotchState, _ action: NotchAction) -> NotchState {
     case .showHud(let hud): s.hud = hud
     case .dismissHud: s.hud = nil
     case .notify(let notice):
-        if !s.notices.contains(where: { $0.id == notice.id }) { s.noticeEntrance = .drop }
+        if !s.notices.contains(where: { $0.id == notice.id }) {
+            s.noticeEntrance = Notices.replaced(by: notice, in: s.notices) == nil ? .drop : .rise
+        }
         s.notices = Notices.add(notice, to: s.notices)
     case .dismissNotice(let id):
         s.notices.removeAll { $0.id == id }
@@ -519,7 +550,7 @@ func reduce(_ state: NotchState, _ action: NotchAction) -> NotchState {
     case .leaveNotice(let id, let exit): s.notices = Notices.leave(id, exit, in: s.notices)
     case .pressNotice(let id, let title):
         if let i = s.notices.firstIndex(where: { $0.id == id }) { s.notices[i].pressed = title }
-    case .expireNotice(let id): s.notices = Notices.expire(id, in: s.notices)
+    case .expireNotice(let id, let now): s.notices = Notices.expire(id, in: s.notices, at: now)
     case .stored(let items, let now): s = History.store(items, over: s, at: now)
     case .remember(let item): s.recent = s.recent.filter { $0.id != item.id } + [item]
     case .clearHistory(let app, let now):
@@ -561,7 +592,9 @@ func reduce(_ state: NotchState, _ action: NotchAction) -> NotchState {
         let (sessions, notice) = Agents.apply(report, to: s.agents, at: now)
         s.agents = sessions
         if let notice { s = reduce(s, .notify(notice)) }
-    case .banner(let notice, let route, let now): s = Reminders.apply(route, notice, to: s, at: now)
+    case .banner(var notice, let route, let now):
+        notice.arrived = now
+        s = Reminders.apply(route, notice, to: s, at: now)
     case .events(let events): s.today.events = Today.unique(events)
     case .calendarAccess(let allowed): s.today.calendarAllowed = allowed
     case .weather(let weather): s.today.weather = weather
@@ -583,6 +616,8 @@ enum Layout {
     static let flare: CGFloat = 6
     /// Extra hit area around the visible shape, so hover is not twitchy at the edges.
     static let hoverSlack: CGFloat = 8
+    /// How long the pointer rests on the closed notch before it opens; passing by does nothing.
+    static let hoverDelay: TimeInterval = 0.5
     /// Room for the drop shadow inside the transparent window.
     static let shadowRoom: CGFloat = 60
     /// Wide enough that every tab fits in the left ear, clear of the camera.
@@ -616,8 +651,6 @@ enum Layout {
     static func size(_ state: NotchState, notch: CGSize) -> CGSize {
         // The last notice shrinks back into the camera while its content plays the exit;
         // with more waiting the island stays for the next one.
-    /// How long the pointer rests on the closed notch before it opens; passing by does nothing.
-    static let hoverDelay: TimeInterval = 0.5
         if state.mode == .notice, state.notice?.leaving != nil, state.notices.count == 1 {
             return compactSize(state, notch: notch)
         }
