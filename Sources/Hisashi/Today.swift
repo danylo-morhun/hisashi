@@ -84,6 +84,11 @@ enum Today {
         return s
     }
 
+    /// The timer's alarm rings while its notice is up and not yet answered.
+    static func ringing(_ state: NotchState) -> Bool {
+        state.notices.contains { $0.id.hasPrefix(timerPrefix) && $0.leaving == nil && $0.pressed == nil }
+    }
+
     /// Two digits at most: the time beside the camera has room for 99 minutes.
     static func type(_ key: EntryKey, in state: NotchState, at now: Date) -> NotchState {
         guard let entry = state.today.entry else { return state }
