@@ -12,6 +12,8 @@ final class NotchModel {
     var noticeEffect: (AppNotice, NoticeEffect) -> Void = { _, _ in }
     /// Set by the shell: clears an app's stack (nil: all) in Notification Center too.
     var clearCenter: (String?) -> Void = { _ in }
+    /// Set by the shell: the cleared apps changed, to be kept on disk.
+    var clearedChanged: ([String: Date]) -> Void = { _ in }
     /// Set by the shell: opens the app behind a listed notification.
     var openHistory: (HistoryItem) -> Void = { _ in }
     /// Set by the shell: opens an event of the agenda.
@@ -40,12 +42,14 @@ final class NotchModel {
         let ringing = Today.ringing(next)
         let entryFlipped = (next.today.entry != nil) != (state.today.entry != nil)
         let ringFlipped = ringing != Today.ringing(state)
+        let clearedFlipped = next.clearedApps != state.clearedApps
         if next != state { state = next }
         if entryFlipped { entryChanged(state.today.entry != nil) }
         if case .show = action { scheduleDismiss() }
         if case .showHud = action { scheduleHudDismiss() }
         for notice in leaving { finishLeaving(notice.id) }
         if ringFlipped { timerRinging(ringing) }
+        if clearedFlipped { clearedChanged(state.clearedApps) }
         syncNoticeClock()
         syncTimer()
     }
