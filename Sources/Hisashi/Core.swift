@@ -616,6 +616,8 @@ enum Layout {
     static func size(_ state: NotchState, notch: CGSize) -> CGSize {
         // The last notice shrinks back into the camera while its content plays the exit;
         // with more waiting the island stays for the next one.
+    /// How long the pointer rests on the closed notch before it opens; passing by does nothing.
+    static let hoverDelay: TimeInterval = 0.5
         if state.mode == .notice, state.notice?.leaving != nil, state.notices.count == 1 {
             return compactSize(state, notch: notch)
         }
