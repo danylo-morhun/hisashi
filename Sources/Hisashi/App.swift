@@ -33,6 +33,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let entry = KeyEntry()
     private var store: NoticeStore?
     private var termination: DispatchSourceSignal?
+    /// Waits for the pointer to rest on the closed notch before it opens.
+    private var dwell: DispatchWorkItem?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildPanel()
@@ -255,15 +257,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func mouseMoved(_ point: NSPoint) {
         guard let model, let panel else { return }
-        let rect = Layout.visibleRect(model.state, notch: model.notch, screen: screenFrame)
-            .insetBy(dx: -Layout.hoverSlack, dy: -Layout.hoverSlack)
-        let inside = rect.contains(point)
-        if inside != model.state.isHovering {
-            let wasCompact = model.state.mode == .compact
-            model.send(.hover(inside))
-            if wasCompact && model.state.mode == .open { Haptics.tap() }
-        }
+        let inside = hoverRect(model).contains(point)
         panel.ignoresMouseEvents = !inside
+        if !inside { dwell?.cancel(); dwell = nil }
+        guard inside != model.state.isHovering else { return }
+        // A closed notch opens only once the pointer rests on it, so passing by does nothing.
+        // Notices and the HUD answer hover at once.
+        if inside, model.state.mode == .compact {
+            guard dwell == nil else { return }
+            let work = DispatchWorkItem { [weak self] in
+                self?.dwell = nil
+                self?.rested(NSEvent.mouseLocation)
+            }
+            dwell = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + Layout.hoverDelay, execute: work)
+            return
+        }
+        hover(inside)
+    }
+
+    private func rested(_ point: NSPoint) {
+        guard let model else { return }
+        if hoverRect(model).contains(point), !model.state.isHovering { hover(true) }
+    }
+
+    private func hoverRect(_ model: NotchModel) -> CGRect {
+        Layout.visibleRect(model.state, notch: model.notch, screen: screenFrame)
+            .insetBy(dx: -Layout.hoverSlack, dy: -Layout.hoverSlack)
+    }
+
+    private func hover(_ inside: Bool) {
+        guard let model else { return }
+        let wasCompact = model.state.mode == .compact
+        model.send(.hover(inside))
+        if wasCompact && model.state.mode == .open { Haptics.tap() }
     }
 }
 
