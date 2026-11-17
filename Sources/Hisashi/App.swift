@@ -54,7 +54,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         startNotices()
         startClaude()
         startToday()
-        startCI()
         MainActor.assumeIsolated {
             shelf.onKept = { [weak self] in self?.model?.send(.select(.shelf)) }
             shelf.onIncoming = { [weak self] over in self?.model?.send(.dropping(over)) }
@@ -88,14 +87,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     DayEvent(id: "s4", title: "Call home", start: at(300), end: at(330)),
                 ]))
             }
-        }
-        // Dev aid: `--sample-ci` shows a made-up run of five jobs instead of the real ones.
-        if CommandLine.arguments.contains("--sample-ci") {
-            let run = CIRun(id: 1, repo: "danylo-morhun/hisashi", workflow: "CI", branch: "main", event: "push",
-                            actor: "me", account: "me", status: .running, started: Date().addingTimeInterval(-160),
-                            updated: Date(), url: URL(string: "https://github.com")!,
-                            jobs: [.passed, .passed, .passed, .running, .waiting], job: "test")
-            model?.send(.runs([run], fresh: [], at: Date()))
         }
         // Dev aid: `--hud volume|brightness 0.5` shows the HUD at that level.
         if let i = CommandLine.arguments.firstIndex(of: "--hud"), CommandLine.arguments.count > i + 2,
@@ -134,16 +125,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         audio.setTarget(nil)
         banners.stop()
         claude.stop()
-        MainActor.assumeIsolated { github.stop() }
-    }
-
-    /// GitHub Actions runs of the repos pushed to lately, on every account `gh` knows.
-    private func startCI() {
-        guard let model else { return }
-        MainActor.assumeIsolated {
-            github.onRuns = { model.send(.runs($0, fresh: $1, at: Date())) }
-            if !CommandLine.arguments.contains("--sample-ci") { github.start() }
-        }
     }
 
     /// Claude Code sessions, told by their hooks (scripts/claude-hook.sh).
@@ -192,17 +173,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             if effect == .press(Reminders.joinLabel), let event = Reminders.event(of: notice, in: model.state.today, at: Date()) {
                 TodayLinks.open(event)
-                return
-            }
-            // A CI notice opens the run, its pull request or reruns what failed.
-            if let id = CI.run(ofNotice: notice.id) {
-                let run = model.state.runs.first { $0.id == id }
-                switch effect {
-                case .press(CI.rerunLabel): if let run, let github = self?.github { MainActor.assumeIsolated { github.rerun(run) } }
-                case .press(CI.pullLabel): Browser.open(run?.pullURL)
-                case .open: Browser.open(run?.url)
-                default: break
-                }
                 return
             }
             // A Claude notice opens the Terminal tab of its session; closing it needs nothing more.
