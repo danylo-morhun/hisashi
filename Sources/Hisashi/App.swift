@@ -167,7 +167,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             model.send(.remember(HistoryItem(id: notice.id, app: notice.app, title: notice.title,
                                              body: notice.detail, date: Date(), image: notice.image)))
         }
-        banners.onExpire = { model.send(.expireNotice($0)) }
+        banners.onExpire = { model.send(.expireNotice($0, at: Date())) }
         model.noticeEffect = { [weak self] notice, effect in
             if notice.id.hasPrefix(Today.timerPrefix) {
                 if effect == .press(Today.extendLabel) { model.send(.startTimer(5 * 60, at: Date())) }
