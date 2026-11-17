@@ -345,13 +345,8 @@ private struct SenderIcon: View {
         }
     }
 
-    @ViewBuilder
     private var appIcon: some View {
-        if let image = Senders.icon(app) {
-            Image(nsImage: image).resizable().interpolation(.high)
-        } else {
-            RoundedRectangle(cornerRadius: 5).fill(Theme.raised)
-        }
+        Image(nsImage: Senders.icon(app)).resizable().interpolation(.high)
     }
 }
 

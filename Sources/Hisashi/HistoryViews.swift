@@ -181,13 +181,8 @@ private struct Avatar: View {
         }
     }
 
-    @ViewBuilder
     private var appIcon: some View {
-        if let image = Senders.icon(item.app, bundle: item.bundle) {
-            Image(nsImage: image).resizable().interpolation(.high)
-        } else {
-            RoundedRectangle(cornerRadius: 7).fill(Theme.raised)
-        }
+        Image(nsImage: Senders.icon(item.app, bundle: item.bundle)).resizable().interpolation(.high)
     }
 }
 
