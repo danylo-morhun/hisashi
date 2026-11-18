@@ -151,7 +151,7 @@ private struct PickRow: View {
 }
 
 /// The empty pane with one line and maybe one button.
-private struct Quiet: View {
+struct Quiet: View {
     let line: String
     var button: String?
     var action: () -> Void = {}
