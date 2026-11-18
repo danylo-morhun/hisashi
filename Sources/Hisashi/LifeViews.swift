@@ -23,7 +23,8 @@ struct LifePane: View {
             case .unauthorized:
                 Quiet(line: "seikatsu refused the token", button: "Open seikatsu settings") { life.openSettings() }
             case .loading:
-                Quiet(line: "Reading seikatsu…")
+                // Only the very first time: later the last answers show while fresh ones come.
+                LifeTiles()
             case .failed:
                 Quiet(line: "seikatsu did not answer", button: "Try again") { life.wake() }
             }
@@ -55,7 +56,9 @@ private struct Tile: View {
         VStack(alignment: .leading, spacing: 0) {
             Text(heading).font(.system(size: 11)).foregroundStyle(Theme.muted)
             Spacer(minLength: 6)
-            if app == .keizoku {
+            if life.today == nil {
+                TileSkeleton()
+            } else if app == .keizoku {
                 HabitTicks()
             } else {
                 let tile = Seikatsu.tile(app, today: life.today, plan: life.plan)
@@ -67,10 +70,10 @@ private struct Tile: View {
                     Text(tile.label).font(.system(size: 11)).foregroundStyle(Theme.soft).lineLimit(1)
                 }
                 Spacer(minLength: 6)
+                // Room for two lines always, so every tile's number sits at the same height.
                 Text(tile.line).font(.system(size: 11)).foregroundStyle(Theme.ink).lineLimit(2)
                     .frame(maxWidth: .infinity, minHeight: 28, alignment: .bottomLeading)
             }
-                // Room for two lines always, so every tile's number sits at the same height.
         }
         .padding(12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -84,7 +87,7 @@ private struct Tile: View {
     }
 
     private var heading: String {
-        guard app == .keizoku else { return app.title }
+        guard app == .keizoku, life.today != nil else { return app.title }
         let count = Seikatsu.habitCount(life.today)
         return "Keizoku · \(count.done) of \(count.due)"
     }
@@ -547,10 +550,59 @@ private struct Row: View {
     }
 }
 
+/// Rows still on their way: the shapes of three rows, breathing.
 private struct Waiting: View {
     var body: some View {
-        Text("Reading…").font(.system(size: 12)).foregroundStyle(Theme.muted)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach([0.72, 0.56, 0.64], id: \.self) { share in
+                HStack(spacing: 10) {
+                    Circle().fill(Theme.raised).frame(width: 16, height: 16)
+                    GeometryReader { geo in
+                        Bar(width: geo.size.width * share)
+                    }
+                    .frame(height: 8)
+                }
+                .frame(height: 26)
+            }
+            Spacer(minLength: 0)
+        }
+        .modifier(Breathing())
+        .accessibilityLabel("Reading seikatsu")
+    }
+}
+
+/// A tile whose numbers have not come yet.
+private struct TileSkeleton: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Bar(width: 34, height: 22)
+            Bar(width: 70)
+            Spacer(minLength: 6)
+            Bar(width: 96)
+        }
+        .modifier(Breathing())
+    }
+}
+
+private struct Bar: View {
+    let width: CGFloat
+    var height: CGFloat = 8
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 3).fill(Theme.raised).frame(width: width, height: height)
+    }
+}
+
+/// A slow pulse while waiting; it runs only as long as the placeholder is on screen.
+private struct Breathing: ViewModifier {
+    @State private var dim = false
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(dim ? 0.45 : 1)
+            .onAppear {
+                withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) { dim = true }
+            }
     }
 }
 
