@@ -5,6 +5,11 @@ enum Theme {
     static let muted = Color(hex: 0x8E8E93)
     static let surface = Color(hex: 0x1C1C1E)
     static let raised = Color(hex: 0x2C2C2E)
+    /// A tile under the pointer, between surface and raised.
+    static let surfaceHover = Color(hex: 0x232325)
+    /// Tracks, chips and pills on a surface.
+    static let line = Color(hex: 0x3A3A3C)
+    static let lineHover = Color(hex: 0x48484A)
     /// Small caps labels, quieter than muted.
     static let dim = Color(hex: 0x636366)
     /// Body copy of a notice, a step above muted.
