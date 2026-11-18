@@ -430,6 +430,11 @@ struct NotchState: Equatable {
     /// Waiting notices; the last one shows.
     var notices: [AppNotice] = []
     var noticeEntrance = NoticeEntrance.drop
+    /// The notices came while the panel was open: they show as a row inside it instead of
+    /// closing it. Once the panel closes they carry on as the usual notice beside the camera.
+    var noticeInPanel = false
+    /// The pointer rests on that row, which holds the notice's countdown.
+    var isHoveringNotice = false
     /// Notification Center's list as last read from its store.
     var stored: [HistoryItem] = []
     /// Banners shown in the notch that the store has not caught up with yet.
@@ -474,19 +479,30 @@ struct NotchState: Equatable {
 
     var notice: AppNotice? { notices.last }
 
+    /// The pointer, the pin or typing the timer's minutes keeps the panel open.
+    var panelHeld: Bool { isHovering || isPinned || today.entry != nil }
+
+    /// The notice shown as a row in the open panel. The last one leaves with the row.
+    var panelNotice: AppNotice? {
+        guard noticeInPanel, mode == .open, let notice, notice.leaving == nil || notices.count > 1 else { return nil }
+        return notice
+    }
+
     var mode: NotchMode {
         if isDropping { return .open }
         if event != nil { return .event }
         if hud != nil { return .hud }
         // Hovering a notice keeps it, it does not open the panel.
-        if notice != nil { return .notice }
-        // Typing the timer's minutes keeps the panel open without the pointer on it.
-        return isHovering || isPinned || today.entry != nil ? .open : .compact
+        if notice != nil, !noticeInPanel { return .notice }
+        if panelHeld { return .open }
+        return notice != nil ? .notice : .compact
     }
 }
 
 enum NotchAction {
     case hover(Bool)
+    /// The pointer is on the notice row inside the open panel.
+    case hoverNotice(Bool)
     case dropping(Bool)
     case togglePin
     case unpin
@@ -535,9 +551,20 @@ enum NotchAction {
 }
 
 func reduce(_ state: NotchState, _ action: NotchAction) -> NotchState {
+    var s = step(state, action)
+    // The row lives only while the panel is held open; a notice left over goes beside the camera.
+    if s.notices.isEmpty || !s.panelHeld {
+        s.noticeInPanel = false
+        s.isHoveringNotice = false
+    }
+    return s
+}
+
+private func step(_ state: NotchState, _ action: NotchAction) -> NotchState {
     var s = state
     switch action {
     case .hover(let inside): s.isHovering = inside
+    case .hoverNotice(let inside): s.isHoveringNotice = inside
     case .dropping(let over): s.isDropping = over
     case .togglePin: s.isPinned.toggle()
     case .unpin: s.isPinned = false
@@ -547,6 +574,7 @@ func reduce(_ state: NotchState, _ action: NotchAction) -> NotchState {
     case .showHud(let hud): s.hud = hud
     case .dismissHud: s.hud = nil
     case .notify(let notice):
+        if s.mode == .open, !s.isDropping { s.noticeInPanel = true }
         if !s.notices.contains(where: { $0.id == notice.id }) {
             s.noticeEntrance = Notices.replaced(by: notice, in: s.notices) == nil ? .drop : .rise
         }
@@ -631,6 +659,8 @@ enum Layout {
     /// Wide enough that every tab fits in the left ear, clear of the camera.
     static let openWidth: CGFloat = 600
     static let openBody: CGFloat = 176
+    /// Height a notice adds to the open panel: its row and the gap under it.
+    static let panelNotice: CGFloat = 56
     static let eventBody: CGFloat = 44
     /// A notice spreads into the menu bar on both sides of the camera; each wing holds
     /// the icon and title on the left, the time on the right. They grow with the title, within limits.
@@ -672,7 +702,9 @@ enum Layout {
             return CGSize(width: notch.width + layout.wing * 2, height: height)
         }
         if state.mode == .compact { return compactSize(state, notch: notch) }
-        return size(state.mode, activity: state.hasActivity, notch: notch)
+        var size = size(state.mode, activity: state.hasActivity, notch: notch)
+        if state.panelNotice != nil { size.height += panelNotice }
+        return size
     }
 
     /// Closed: Claude at work and the timer take the wider ears, else music its own.
@@ -706,7 +738,7 @@ enum Layout {
     }
 
     static func windowSize(notch: CGSize) -> CGSize {
-        CGSize(width: openWidth + flare * 2 + shadowRoom * 2, height: notch.height + openBody + shadowRoom)
+        CGSize(width: openWidth + flare * 2 + shadowRoom * 2, height: notch.height + openBody + panelNotice + shadowRoom)
     }
 
     /// Visible shape rect in screen coordinates (origin bottom-left, AppKit style).
