@@ -151,7 +151,7 @@ private struct BodyExit: ViewModifier {
 
 /// How much of the countdown is left. Core Animation drains it in the render server,
 /// so the app does no per-frame work; a pause freezes the layer where it is.
-private struct CountdownRing: NSViewRepresentable {
+struct CountdownRing: NSViewRepresentable {
     let clock: Countdown
 
     func makeNSView(context: Context) -> RingView { RingView() }
@@ -216,7 +216,7 @@ private struct CountdownRing: NSViewRepresentable {
 
 /// Capsule buttons against the right edge, the first one bright. As many as fit at their own width share the row;
 /// the rest go into Options. A pressed button folds into a green check.
-private struct ActionRow: View {
+struct ActionRow: View {
     let actions: [String]
     let pressed: String?
     let press: (String) -> Void
@@ -323,7 +323,7 @@ private struct CloseMark: View {
 
 /// The sender's app icon.
 /// The sender: their photo with a small app badge when the app sent one, else the app icon.
-private struct SenderIcon: View {
+struct SenderIcon: View {
     let app: String
     var photo: Data?
 
