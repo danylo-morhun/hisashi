@@ -112,55 +112,34 @@ private struct HabitTicks: View {
 }
 
 // MARK: Open app
+// One main fact, then rows of name and value. Color only on what waits on the user;
+// everything that leaves for the site carries the ↗ arrow.
 
 private struct LifeOpen: View {
     let app: LifeApp
     @Environment(Life.self) private var life
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 14) {
                 BackButton(title: app.title) { life.expand(nil) }
-                header
                 Spacer(minLength: 4)
-                trailing
+                if app == .seiryu {
+                    ForEach(life.focus?.sections ?? [], id: \.section) { s in
+                        SectionTab(title: s.section, isOn: s.section == life.section) { life.section = s.section }
+                    }
+                }
                 LinkButton { life.site(app.path) }
+                    .padding(.leading, app == .seiryu ? -4 : 0)
             }
             .frame(height: 26)
             content
-                .padding(.leading, 6)
+                .padding(.leading, 8)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
-        .padding(EdgeInsets(top: 8, leading: 6, bottom: 8, trailing: 12))
+        .padding(EdgeInsets(top: 8, leading: 6, bottom: 10, trailing: 14))
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(RoundedRectangle(cornerRadius: 14).fill(Theme.surface))
-    }
-
-    @ViewBuilder private var header: some View {
-        switch app {
-        case .kuroji:
-            if let p = life.plan?.progress { Caption(text: "\(monthName) · day \(p.elapsed) of \(p.days)") }
-        case .keizoku:
-            let count = Seikatsu.habitCount(life.today)
-            Caption(text: "\(count.done) of \(count.due) today")
-        default: EmptyView()
-        }
-    }
-
-    @ViewBuilder private var trailing: some View {
-        switch app {
-        case .seiryu:
-            ForEach(life.focus?.sections ?? [], id: \.section) { s in
-                Chip(title: "\(s.section) \(s.cards?.count ?? 0)", isOn: s.section == life.section) {
-                    life.section = s.section
-                }
-            }
-        case .kuroji:
-            if let captures = Seikatsu.items(life.today, .kuroji).first(where: { $0.key == "kuroji:captures" }) {
-                Pill(title: captures.title, tone: .warning) { life.site("/kuroji?tab=transactions") }
-            }
-        default: EmptyView()
-        }
     }
 
     @ViewBuilder private var content: some View {
@@ -171,11 +150,6 @@ private struct LifeOpen: View {
         case .keizoku: KeizokuView()
         }
     }
-
-    private var monthName: String {
-        guard let month = life.plan?.month, let date = Seikatsu.day(month + "-01") else { return "" }
-        return date.formatted(.dateTime.month(.wide))
-    }
 }
 
 private struct SeiryuView: View {
@@ -183,19 +157,27 @@ private struct SeiryuView: View {
 
     var body: some View {
         let cards = life.focus?.sections?.first { $0.section == life.section }?.cards ?? []
+        let projects = Set(cards.compactMap(\.project))
         if life.focus == nil {
             Waiting()
         } else if cards.isEmpty {
             Empty(line: "Nothing here")
         } else {
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 0) {
-                    ForEach(cards) { card in
-                        CardRow(card: card)
-                            .transition(.opacity.combined(with: .move(edge: .leading)))
+            VStack(alignment: .leading, spacing: 0) {
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: 0) {
+                        ForEach(cards) { card in
+                            CardRow(card: card, showsProject: projects.count > 1)
+                                .transition(.opacity.combined(with: .move(edge: .leading)))
+                        }
                     }
+                    .animation(.easeOut(duration: 0.25), value: cards.map(\.id))
                 }
-                .animation(.easeOut(duration: 0.25), value: cards.map(\.id))
+                // A project every card shares is said once, under the list.
+                if projects.count == 1, let project = projects.first {
+                    Text(project).font(.system(size: 11)).foregroundStyle(Theme.muted).lineLimit(1)
+                        .padding(.top, 4)
+                }
             }
         }
     }
@@ -203,33 +185,33 @@ private struct SeiryuView: View {
 
 private struct CardRow: View {
     let card: SeiryuFocus.Card
+    let showsProject: Bool
     @Environment(Life.self) private var life
 
     var body: some View {
         let done = life.finished.contains(card.id)
         HStack(spacing: 10) {
-            Button { life.finish(card) } label: { CheckCircle(done: done, size: 18) }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Done: \(card.title)")
-            VStack(alignment: .leading, spacing: 1) {
-                Text(card.title).font(.system(size: 12)).lineLimit(1)
-                    .foregroundStyle(done ? Theme.muted : Theme.ink)
-                Text(detail).font(.system(size: 10)).foregroundStyle(Theme.muted).lineLimit(1)
+            Button { life.finish(card) } label: {
+                CheckCircle(done: done, size: 16, ring: card.priority == "urgent" ? Theme.color(.failure) : nil)
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Done: \(card.title)" + (card.priority == "urgent" ? ", urgent" : ""))
+            Text(card.title).font(.system(size: 12)).lineLimit(1)
+                .foregroundStyle(done ? Theme.muted : Theme.ink)
             Spacer(minLength: 4)
-            if card.priority == "urgent" {
-                Text("URGENT").font(.system(size: 10, weight: .bold)).foregroundStyle(Theme.color(.failure))
+            if !detail.isEmpty {
+                Text(detail).font(.system(size: 11)).foregroundStyle(Theme.muted).lineLimit(1)
             }
-            Text(Seikatsu.when(card, today: life.focus?.today))
-                .font(.system(size: 11))
+            Text(Seikatsu.when(card, today: life.focus?.today, quiet: true))
+                .font(.system(size: 12))
                 .foregroundStyle(overdue ? Theme.color(.failure) : Theme.soft)
-                .frame(minWidth: 36, alignment: .trailing)
+                .frame(width: 38, alignment: .trailing)
         }
-        .frame(height: 32)
+        .frame(height: 26)
     }
 
     private var detail: String {
-        [card.project, card.group, card.checklist].compactMap { $0 }.joined(separator: " · ")
+        [showsProject ? card.project : nil, card.checklist].compactMap { $0 }.joined(separator: " · ")
     }
 
     private var overdue: Bool {
@@ -244,100 +226,82 @@ private struct KurojiView: View {
     var body: some View {
         if let plan = life.plan {
             let unit = Seikatsu.currency(plan.currency)
-            let totals = plan.totals
-            let spent = totals?.expenseActual ?? 0
-            let planned = totals?.expensePlan ?? 0
+            let spent = plan.totals?.expenseActual ?? 0
+            let planned = plan.totals?.expensePlan ?? 0
+            let share = planned > 0 ? spent / planned : 0
             let pace = plan.progress?.share ?? 0
-            HStack(alignment: .top, spacing: 14) {
-                VStack(alignment: .leading, spacing: 0) {
-                    Caption(text: "Spent")
-                    (Text(Seikatsu.amount(spent)).font(.system(size: 22, weight: .semibold))
-                        + Text(" of \(Seikatsu.amount(planned)) \(unit)").font(.system(size: 12)).foregroundColor(Theme.soft))
-                        .lineLimit(1).minimumScaleFactor(0.7)
-                    Spacer(minLength: 6)
-                    PaceBar(share: planned > 0 ? spent / planned : 0, pace: pace)
-                    Spacer(minLength: 6)
-                    Text(paceLine(spent: spent, planned: planned, pace: pace, free: totals?.free, unit: unit))
-                        .font(.system(size: 11)).foregroundStyle(Theme.soft).lineLimit(1)
+            let ahead = share > pace + 0.02
+            let captures = Seikatsu.items(life.today, .kuroji).first { $0.key == "kuroji:captures" }
+            HStack(alignment: .top, spacing: 28) {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text("\(Seikatsu.amount(spent)) \(unit)").font(.system(size: 20, weight: .semibold))
+                        Spacer(minLength: 6)
+                        Text("of \(Seikatsu.amount(planned))").font(.system(size: 12)).foregroundStyle(Theme.muted)
+                    }
+                    PaceBar(share: share, pace: pace, ahead: ahead)
+                    if let p = plan.progress {
+                        Text("Day \(p.elapsed) of \(p.days), " + (ahead ? "spending ahead of the month" : "within the month's pace"))
+                            .font(.system(size: 12)).foregroundStyle(Theme.soft).lineLimit(1)
+                    }
+                    Spacer(minLength: 0)
+                    if let captures {
+                        ActionLink(title: captures.title, tone: .warning) { life.site("/kuroji?tab=transactions") }
+                    }
                 }
-                .frame(width: 168)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
-                VStack(alignment: .leading, spacing: 3) {
-                    Caption(text: "Over plan")
+                VStack(alignment: .leading, spacing: 0) {
                     let over = (plan.expense ?? [])
                         .filter { ($0.actual ?? 0) > ($0.plan ?? 0) }
                         .sorted { ($0.actual ?? 0) - ($0.plan ?? 0) > ($1.actual ?? 0) - ($1.plan ?? 0) }
                     if over.isEmpty {
-                        Text("Nothing yet").font(.system(size: 12)).foregroundStyle(Theme.muted)
+                        Row(name: "Every category within plan", value: "", muted: true)
                     }
-                    ForEach(over.prefix(4), id: \.name) { line in
+                    ForEach(over.prefix(3), id: \.name) { line in
                         HStack(spacing: 0) {
                             Text(line.name).lineLimit(1)
                             Spacer(minLength: 6)
-                            Text(Seikatsu.amount(line.actual ?? 0)).foregroundStyle(Theme.color(.warning))
+                            Text(Seikatsu.amount(line.actual ?? 0))
                             Text(" / \(Seikatsu.amount(line.plan ?? 0))").foregroundStyle(Theme.muted)
                         }
                         .font(.system(size: 12))
-                        .frame(height: 18)
+                        .frame(height: 24)
                     }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Caption(text: "Funds this month")
+                    Spacer(minLength: 0)
                     let funds = (plan.funds ?? []).filter { ($0.instalment ?? 0) > 0 }
-                    if funds.isEmpty {
-                        Text("All filled").font(.system(size: 12)).foregroundStyle(Theme.muted)
-                    }
-                    ForEach(funds.prefix(3)) { fund in
-                        HStack(spacing: 8) {
-                            VStack(alignment: .leading, spacing: 0) {
-                                Text(fund.name).font(.system(size: 12)).lineLimit(1)
-                                Text(fundLine(fund, unit: unit)).font(.system(size: 10)).foregroundStyle(Theme.muted).lineLimit(1)
-                            }
-                            Spacer(minLength: 4)
-                            Pill(title: "Transfer") { life.site("/kuroji?tab=plan") }
-                        }
-                        .frame(height: 30)
+                    if !funds.isEmpty {
+                        Row(name: "Into \(funds.count) fund" + (funds.count == 1 ? "" : "s"),
+                            value: "\(Seikatsu.amount(funds.reduce(0) { $0 + ($1.instalment ?? 0) })) \(unit)", muted: true)
                     }
                 }
-                .frame(width: 170)
+                .frame(width: 220)
+                .frame(maxHeight: .infinity, alignment: .top)
             }
         } else {
             Waiting()
         }
     }
-
-    private func paceLine(spent: Double, planned: Double, pace: Double, free: Double?, unit: String) -> String {
-        let ahead = planned > 0 && spent / planned > pace + 0.02
-        let freeText = free.map { " · \(Seikatsu.amount($0)) \(unit) free" } ?? ""
-        return (ahead ? "Ahead of pace" : "Within pace") + freeText
-    }
-
-    private func fundLine(_ fund: KurojiPlan.Fund, unit: String) -> String {
-        let amount = "\(Seikatsu.amount(fund.instalment ?? 0)) \(unit)"
-        guard let due = fund.dueDate.flatMap(Seikatsu.day) else { return amount }
-        return amount + " · by " + due.formatted(.dateTime.day().month(.abbreviated))
-    }
 }
 
-/// Spent against the plan, with a mark where the month is.
+/// Spent against the plan, with a mark where the month is. Orange only while spending runs ahead.
 private struct PaceBar: View {
     let share: Double
     let pace: Double
+    let ahead: Bool
 
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
                 Capsule().fill(Theme.line)
-                Capsule().fill(share > 1 ? Theme.color(.warning) : Theme.ink)
+                Capsule().fill(ahead ? Theme.color(.warning) : Theme.ink)
                     .frame(width: geo.size.width * min(1, max(0, share)))
-                RoundedRectangle(cornerRadius: 1).fill(Theme.color(.warning))
-                    .frame(width: 2, height: 12)
+                RoundedRectangle(cornerRadius: 1).fill(Theme.ink)
+                    .frame(width: 2, height: 10)
                     .offset(x: geo.size.width * min(1, max(0, pace)) - 1)
             }
         }
-        .frame(height: 6)
+        .frame(height: 4)
         .accessibilityLabel("\(Int(share * 100))% of the plan spent, \(Int(pace * 100))% of the month gone")
     }
 }
@@ -348,75 +312,39 @@ private struct KyuuView: View {
     var body: some View {
         let items = Seikatsu.items(life.today, .kyuu)
         let call = items.first { $0.key.hasPrefix("kyuu:call:") }
-        let ghost = items.first { $0.key == "kyuu:ghost" }
-        HStack(alignment: .top, spacing: 14) {
-            VStack(alignment: .leading, spacing: 0) {
-                Caption(text: "Next call")
-                Spacer(minLength: 4)
+        let ghosted = items.first { $0.key == "kyuu:ghost" }.flatMap { Seikatsu.leadingNumber($0.title) } ?? 0
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
                 if let call {
-                    Text(call.note ?? "").font(.system(size: 20, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.7)
+                    Text((call.note ?? "").replacingOccurrences(of: " at ", with: ", "))
+                        .font(.system(size: 20, weight: .semibold)).lineLimit(1)
                     Text(call.title).font(.system(size: 12)).foregroundStyle(Theme.soft).lineLimit(1)
                 } else {
-                    Text("None booked").font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.soft)
-                }
-                Spacer(minLength: 4)
-                if let n = life.kyuu?.inProgress { Caption(text: "\(n) in progress") }
-            }
-            .frame(width: 160, alignment: .leading)
-
-            VStack(alignment: .leading, spacing: 0) {
-                Caption(text: "Funnel")
-                Spacer(minLength: 4)
-                if let k = life.kyuu {
-                    HStack(spacing: 6) {
-                        Stat(value: k.sent ?? 0, label: "sent")
-                        Stat(value: k.answered ?? 0, label: "answered")
-                        Stat(value: k.interviewed ?? 0, label: "interview")
-                        Stat(value: k.offers ?? 0, label: "offer")
-                    }
-                    Spacer(minLength: 4)
-                    Caption(text: rates(k), color: Theme.soft)
-                } else {
-                    Waiting()
+                    Text("No call booked").font(.system(size: 20, weight: .semibold)).foregroundStyle(Theme.soft)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            VStack(alignment: .leading, spacing: 0) {
-                Caption(text: "Waiting")
-                Spacer(minLength: 4)
-                let n = ghost.flatMap { Seikatsu.leadingNumber($0.title) } ?? 0
-                Text("\(n)").font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(n > 0 ? Theme.color(.warning) : Theme.ink)
-                Caption(text: n > 0 ? "quiet long enough" : "no one to close", color: Theme.soft)
-                Spacer(minLength: 4)
-                if n > 0 {
-                    Pill(title: "Close all as ghosted", wide: true) { life.site("/kyuu") }
-                }
+            Spacer(minLength: 4)
+            if let n = life.kyuu?.inProgress, n > 0 {
+                Row(name: "\(n) in progress", value: "")
             }
-            .frame(width: 150, alignment: .leading)
+            if ghosted > 0 {
+                HStack {
+                    Text("\(ghosted) with no answer").font(.system(size: 12))
+                    Spacer(minLength: 6)
+                    ActionLink(title: "Close as ghosted", tone: .warning) { life.site("/kyuu") }
+                }
+                .frame(height: 24)
+            }
+            if let k = life.kyuu {
+                Text(funnel(k)).font(.system(size: 11)).foregroundStyle(Theme.muted).lineLimit(1)
+                    .frame(height: 22)
+            }
         }
-        .padding(.bottom, 2)
     }
 
-    private func rates(_ k: KyuuStats) -> String {
-        var parts: [String] = []
-        if let r = k.replyRate { parts.append("\(Int((r * 100).rounded()))% reply") }
-        if let m = k.firstAnswer?.median { parts.append("first answer in \(Int(m)) days") }
-        return parts.joined(separator: " · ")
-    }
-}
-
-private struct Stat: View {
-    let value: Int
-    let label: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("\(value)").font(.system(size: 17, weight: .semibold))
-            Text(label).font(.system(size: 10)).foregroundStyle(Theme.muted).lineLimit(1)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
+    private func funnel(_ k: KyuuStats) -> String {
+        "\(k.sent ?? 0) sent → \(k.answered ?? 0) answered → \(k.interviewed ?? 0) interviews → \(k.offers ?? 0) offer"
+            + ((k.offers ?? 0) == 1 ? "" : "s")
     }
 }
 
@@ -429,17 +357,17 @@ private struct KeizokuView: View {
             VStack(spacing: 0) {
                 HStack(spacing: 10) {
                     Spacer(minLength: 0)
-                    HStack(spacing: 6) {
-                        ForEach(Array(days.enumerated()), id: \.offset) { i, day in
-                            Text(Seikatsu.weekdayLetter(day))
-                                .foregroundStyle(i == days.count - 1 ? Theme.ink : Theme.muted)
-                                .frame(width: i == days.count - 1 ? 24 : 18)
+                    HStack(spacing: 8) {
+                        ForEach(days.dropLast(), id: \.self) { day in
+                            Text(Seikatsu.weekdayLetter(day)).frame(width: 8)
                         }
                     }
-                    Text("week · best").frame(width: 74, alignment: .trailing)
+                    Text(days.last.map(Seikatsu.weekdayLetter) ?? "").foregroundStyle(Theme.ink).frame(width: 18)
+                    Color.clear.frame(width: 32, height: 1)
                 }
                 .font(.system(size: 10)).foregroundStyle(Theme.muted)
-                .frame(height: 18)
+                .frame(height: 16)
+                .accessibilityHidden(true)
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(spacing: 0) {
                         ForEach(habits) { habit in HabitRow(habit: habit) }
@@ -462,43 +390,46 @@ private struct HabitRow: View {
         HStack(spacing: 10) {
             Text(habit.name).font(.system(size: 12)).lineLimit(1)
             Spacer(minLength: 4)
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
                 ForEach(week.dropLast(), id: \.date) { day in
                     let due = Seikatsu.isDue(habit, on: day.date)
                     Circle()
                         .fill(day.done == true ? Theme.color(.success) : Theme.line)
                         .frame(width: due ? 8 : 4, height: due ? 8 : 4)
-                        .frame(width: 18)
+                        .frame(width: 8)
                 }
             }
             .accessibilityHidden(true)
-            Button { life.tick(habit.id, done: !done) } label: { CheckCircle(done: done, size: 24) }
+            Button { life.tick(habit.id, done: !done) } label: { CheckCircle(done: done, size: 18) }
                 .buttonStyle(.plain)
                 .accessibilityLabel(done ? "Clear \(habit.name) today" : "Tick \(habit.name) today")
-            Text("\(habit.thisWeek ?? 0)/\(Seikatsu.weekGoal(habit)) · \(habit.streak?.best ?? 0)")
-                .font(.system(size: 11)).foregroundStyle(Theme.soft)
-                .frame(width: 74, alignment: .trailing)
+            Text("\(habit.thisWeek ?? 0)/\(Seikatsu.weekGoal(habit))")
+                .font(.system(size: 11)).foregroundStyle(Theme.muted)
+                .frame(width: 32, alignment: .trailing)
+                .accessibilityLabel("\(habit.thisWeek ?? 0) of \(Seikatsu.weekGoal(habit)) this week")
         }
-        .frame(height: 30)
+        .frame(height: 28)
     }
 }
 
 // MARK: Parts
 
 /// An open circle that fills green with a check once done; the check shows on hover.
+/// A colored ring marks an urgent card.
 private struct CheckCircle: View {
     let done: Bool
     let size: CGFloat
+    var ring: Color?
     @State private var isHovered = false
 
     var body: some View {
         ZStack {
             Circle().fill(done ? Theme.color(.success) : .clear)
-            if !done { Circle().strokeBorder(isHovered ? Theme.soft : Theme.dim, lineWidth: 1.5) }
+            if !done { Circle().strokeBorder(ring ?? (isHovered ? Theme.soft : Theme.dim), lineWidth: 1.5) }
             if done || isHovered {
                 Image(systemName: "checkmark")
                     .font(.system(size: size * 0.5, weight: .bold))
-                    .foregroundStyle(done ? Color.black : Theme.soft)
+                    .foregroundStyle(done ? Color.black : (ring ?? Theme.soft))
             }
         }
         .frame(width: size, height: size)
@@ -551,7 +482,8 @@ private struct LinkButton: View {
     }
 }
 
-private struct Chip: View {
+/// A section of Seiryu's focus list: plain text, the chosen one bright.
+private struct SectionTab: View {
     let title: String
     let isOn: Bool
     let action: () -> Void
@@ -560,13 +492,11 @@ private struct Chip: View {
     var body: some View {
         Button(action: action) {
             Text(title)
-                .font(.system(size: 11, weight: isOn ? .semibold : .regular))
+                .font(.system(size: 12, weight: isOn ? .semibold : .regular))
                 .lineLimit(1)
-                .padding(.horizontal, 9)
-                .frame(height: 22)
-                .foregroundStyle(isOn ? Theme.ink : Theme.soft)
-                .background(Capsule().fill(isOn ? Theme.line : (isHovered ? Theme.raised : .clear)))
-                .contentShape(Capsule())
+                .frame(height: 26)
+                .foregroundStyle(isOn || isHovered ? Theme.ink : Theme.muted)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .onHover { isHovered = $0 }
@@ -574,36 +504,45 @@ private struct Chip: View {
     }
 }
 
-private struct Pill: View {
+/// Something to do on the site: text with the ↗ arrow, colored when it waits on the user.
+private struct ActionLink: View {
     let title: String
     var tone: Tone = .neutral
-    var wide = false
     let action: () -> Void
     @State private var isHovered = false
 
     var body: some View {
         Button(action: action) {
-            Text(title)
-                .font(.system(size: 11, weight: .semibold))
-                .lineLimit(1)
-                .padding(.horizontal, 9)
-                .frame(maxWidth: wide ? .infinity : nil)
-                .frame(height: wide ? 26 : 22)
-                .foregroundStyle(tone == .neutral ? Theme.ink : Theme.color(tone))
-                .background(Capsule().fill(isHovered ? Theme.lineHover : Theme.line))
-                .contentShape(Capsule())
+            HStack(spacing: 4) {
+                Text(title).font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                Image(systemName: "arrow.up.right").font(.system(size: 9, weight: .bold))
+            }
+            .frame(height: 24)
+            .foregroundStyle(tone == .neutral ? Theme.ink : Theme.color(tone))
+            .opacity(isHovered ? 0.8 : 1)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("\(title), opens seikatsu")
         .onHover { isHovered = $0 }
     }
 }
 
-private struct Caption: View {
-    let text: String
-    var color: Color = Theme.muted
+/// A name and its value on one line.
+private struct Row: View {
+    let name: String
+    let value: String
+    var muted = false
 
     var body: some View {
-        Text(text).font(.system(size: 11)).foregroundStyle(color).lineLimit(1)
+        HStack {
+            Text(name).lineLimit(1)
+            Spacer(minLength: 6)
+            Text(value)
+        }
+        .font(.system(size: 12))
+        .foregroundStyle(muted ? Theme.soft : Theme.ink)
+        .frame(height: 24)
     }
 }
 
