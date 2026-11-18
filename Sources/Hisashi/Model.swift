@@ -139,11 +139,13 @@ final class NotchModel {
             noticeClock = Countdown(total: 5)
         }
         guard let clock = noticeClock else { return }
-        if state.isHovering, clock.since != nil {
+        // In the open panel only the notice's own row holds it; the pointer is on the panel anyway.
+        let holding = state.noticeInPanel ? state.isHoveringNotice : state.isHovering
+        if holding, clock.since != nil {
             noticeTask?.cancel()
             noticeTask = nil
             noticeClock = clock.paused(at: now)
-        } else if !state.isHovering, clock.since == nil {
+        } else if !holding, clock.since == nil {
             let running = clock.resumed(at: now)
             noticeClock = running
             noticeTask = Task { @MainActor [weak self] in
