@@ -71,6 +71,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if CommandLine.arguments.contains("--status") { model?.send(.select(.status)) }
         // Dev aid: `--shelf` starts on the shelf tab.
         if CommandLine.arguments.contains("--shelf") { model?.send(.select(.shelf)) }
+        // Dev aid: `--life` starts on the seikatsu tab.
+        if CommandLine.arguments.contains("--life") { model?.send(.select(.life)) }
         // Dev aid: `--timer 90` starts a timer of that many seconds.
         if let i = CommandLine.arguments.firstIndex(of: "--timer"), CommandLine.arguments.count > i + 1,
            let seconds = TimeInterval(CommandLine.arguments[i + 1]) {
