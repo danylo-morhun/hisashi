@@ -384,3 +384,62 @@ private struct Shift: ViewModifier {
             .offset(y: active ? y : 0)
     }
 }
+
+/// A notice that came while the panel was open: a row under the tabs, the panel grown to hold it.
+/// The sender and title lead, the text under them, the app's buttons and the close mark at the end.
+struct PanelNotice: View {
+    let notice: AppNotice
+    let hovering: Bool
+    let clock: Countdown?
+    let hover: (Bool) -> Void
+    let act: (NoticeEffect) -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            HStack(spacing: 10) {
+                SenderIcon(app: notice.app, photo: notice.image).frame(width: 30, height: 30)
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(spacing: 6) {
+                        Text(notice.title.isEmpty ? notice.app : notice.title)
+                            .font(.system(size: 13, weight: .semibold))
+                            .lineLimit(1)
+                        Text(notice.title.isEmpty ? "now" : "\(notice.app) · now")
+                            .font(.system(size: 11)).foregroundStyle(Theme.muted)
+                            .lineLimit(1)
+                            .layoutPriority(-1)
+                        if let clock { CountdownRing(clock: clock).frame(width: 10, height: 10) }
+                    }
+                    if !notice.detail.isEmpty {
+                        Text(notice.detail).font(.system(size: 12)).foregroundStyle(Theme.soft).lineLimit(1)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .contentShape(Rectangle())
+            .onTapGesture { act(.open) }
+            if !notice.actions.isEmpty || notice.pressed != nil {
+                ActionRow(actions: notice.actions, pressed: notice.pressed) { act(.press($0)) }
+                    .frame(maxWidth: Layout.noticeButtonsMax)
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+            CloseMark { act(.close) }
+        }
+        .padding(.leading, 4)
+        .padding(.trailing, 6)
+        .frame(height: Layout.panelNotice - 10)
+        .onHover(perform: hover)
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: notice.pressed)
+    }
+}
+
+extension AnyTransition {
+    /// Drops out of the camera with the panel's growth; leaves the same way, back up into it.
+    static var panelNotice: AnyTransition {
+        .asymmetric(
+            insertion: .modifier(active: Shift(active: true, y: -18, scale: 0.92), identity: Shift(active: false, y: -18, scale: 0.92))
+                .animation(.spring(response: 0.55, dampingFraction: 0.72).delay(0.06)),
+            removal: .modifier(active: Shift(active: true, y: -18, scale: 0.92), identity: Shift(active: false, y: -18, scale: 0.92))
+                .animation(.easeIn(duration: 0.24))
+        )
+    }
+}
