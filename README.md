@@ -49,6 +49,7 @@ from seikatsu's settings (account, Claude, "can make changes") in
 ## notifications
 
 banners from other apps are hidden and shown in the notch instead, with the app's own buttons.
+a notification that comes while the panel is open drops into it as a row under the tabs, so the panel stays open.
 the notifications stay in Notification Center. an event that several calendars announce
 is shown once, and a notification the app updates (AirDrop's "receiving", then "received") is one notice.
 when the timer ends, Clock's timer tone rings until the notice is answered, half a minute at most.
