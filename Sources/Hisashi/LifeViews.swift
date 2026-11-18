@@ -68,8 +68,9 @@ private struct Tile: View {
                 }
                 Spacer(minLength: 6)
                 Text(tile.line).font(.system(size: 11)).foregroundStyle(Theme.ink).lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, minHeight: 28, alignment: .bottomLeading)
             }
+                // Room for two lines always, so every tile's number sits at the same height.
         }
         .padding(12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
