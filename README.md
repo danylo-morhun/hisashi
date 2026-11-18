@@ -1,7 +1,7 @@
 # hisashi
 
 macOS app that turns the MacBook notch into a panel for music, the day's calendar,
-notifications and Claude Code sessions.
+notifications, Claude Code sessions and what waits in seikatsu.
 
 the closed notch shows what is going on: the playing track with album art and an equalizer,
 volume and brightness levels instead of the system popup, other apps' notifications,
@@ -17,7 +17,7 @@ opens the panel, so passing by does not.
 | notifications | the Notification Center list, one stack per app, with clearing                               |
 | shelf         | files kept for later, to drag out, AirDrop, share or move                                    |
 | status        | Claude Code sessions, working ones first                                                     |
-| seikatsu      | not built yet                                                                                |
+| seikatsu      | one tile per app of seikatsu: cards due, money, job search, habits                           |
 
 ## Spotify picks
 
@@ -35,6 +35,16 @@ files that would vanish soon (the floating screenshot, browser and Mail drags, t
 are copied into `~/Library/Application Support/Hisashi/Shelf`. files stay for a week.
 dragging them into an app leaves them on the shelf; a file moved away, or the clear button, takes it off.
 the pile drags out whole, a click fans it out into single files.
+
+## seikatsu
+
+the seikatsu tab reads [seikatsu](https://seikatsu.danylomorhun.com) through its MCP endpoint.
+four tiles show Seiryu's cards due today, Kuroji's payments to add and funds, Kyuu's next call
+and today's Keizoku habits, which tick right on the tile. a tile opens into that app's own view
+and stays open until back: Seiryu's focus list with a done button per card, Kuroji's month against
+its plan, Kyuu's funnel, a week of habits. the rest opens on the site. it needs a personal token
+from seikatsu's settings (account, Claude, "can make changes") in
+`~/Library/Application Support/Hisashi/seikatsu.json` as `{"token": "..."}`.
 
 ## notifications
 
