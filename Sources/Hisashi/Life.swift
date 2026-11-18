@@ -7,8 +7,8 @@ import Observation
 // so nearly every field is optional.
 
 /// Today across every app, as seikatsu's Today page lists it.
-struct LifeToday: Decodable, Equatable {
-    struct Item: Decodable, Equatable {
+struct LifeToday: Codable, Equatable {
+    struct Item: Codable, Equatable {
         let app: String
         /// overdue, due or info.
         let tone: String
@@ -17,7 +17,7 @@ struct LifeToday: Decodable, Equatable {
         let key: String
     }
 
-    struct Habit: Decodable, Equatable {
+    struct Habit: Codable, Equatable {
         let id: String
         let name: String
         var due: Bool?
@@ -29,13 +29,13 @@ struct LifeToday: Decodable, Equatable {
 }
 
 /// Seiryu's Focus page: overdue, today, in progress, next seven days.
-struct SeiryuFocus: Decodable, Equatable {
-    struct Section: Decodable, Equatable {
+struct SeiryuFocus: Codable, Equatable {
+    struct Section: Codable, Equatable {
         let section: String
         var cards: [Card]?
     }
 
-    struct Card: Decodable, Equatable, Identifiable {
+    struct Card: Codable, Equatable, Identifiable {
         let id: String
         let title: String
         var project: String?
@@ -51,27 +51,27 @@ struct SeiryuFocus: Decodable, Equatable {
 }
 
 /// Kuroji's plan for this month.
-struct KurojiPlan: Decodable, Equatable {
-    struct Progress: Decodable, Equatable {
+struct KurojiPlan: Codable, Equatable {
+    struct Progress: Codable, Equatable {
         let elapsed: Int
         let days: Int
         var share: Double?
     }
 
-    struct Line: Decodable, Equatable {
+    struct Line: Codable, Equatable {
         let name: String
         var plan: Double?
         var actual: Double?
     }
 
-    struct Totals: Decodable, Equatable {
+    struct Totals: Codable, Equatable {
         var expensePlan: Double?
         var expenseActual: Double?
         var instalments: Double?
         var free: Double?
     }
 
-    struct Fund: Decodable, Equatable, Identifiable {
+    struct Fund: Codable, Equatable, Identifiable {
         let id: String
         let name: String
         var target: Double?
@@ -89,8 +89,8 @@ struct KurojiPlan: Decodable, Equatable {
 }
 
 /// The job search in numbers.
-struct KyuuStats: Decodable, Equatable {
-    struct Median: Decodable, Equatable { var median: Double? }
+struct KyuuStats: Codable, Equatable {
+    struct Median: Codable, Equatable { var median: Double? }
 
     var sent: Int?
     var answered: Int?
@@ -103,13 +103,13 @@ struct KyuuStats: Decodable, Equatable {
 }
 
 /// A habit with its last seven days.
-struct KeizokuHabit: Decodable, Equatable, Identifiable {
-    struct Streak: Decodable, Equatable {
+struct KeizokuHabit: Codable, Equatable, Identifiable {
+    struct Streak: Codable, Equatable {
         var current: Int?
         var best: Int?
     }
 
-    struct Day: Decodable, Equatable {
+    struct Day: Codable, Equatable {
         let date: String
         var done: Bool?
     }
@@ -361,6 +361,31 @@ struct SeikatsuAPI {
     }
 }
 
+/// The last answers, kept so the tab opens on them at once and refreshes in place.
+/// ~/Library/Application Support/Hisashi/seikatsu-cache.json, readable only by the user.
+struct LifeCache: Codable {
+    var today: LifeToday?
+    var plan: KurojiPlan?
+    var focus: SeiryuFocus?
+    var kyuu: KyuuStats?
+    var habits: [KeizokuHabit]?
+
+    static var file: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appending(path: "Library/Application Support/Hisashi/seikatsu-cache.json")
+    }
+
+    static func load() -> LifeCache? {
+        (try? Data(contentsOf: file)).flatMap { try? JSONDecoder().decode(LifeCache.self, from: $0) }
+    }
+
+    func save() {
+        guard let data = try? JSONEncoder().encode(self) else { return }
+        try? data.write(to: Self.file, options: .atomic)
+        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: Self.file.path)
+    }
+}
+
 /// The tab's data and the app it has open. Today and the month's plan are read when the tab
 /// shows, an app's own view when it opens; again after two minutes, and after every change.
 @MainActor
@@ -389,6 +414,19 @@ final class Life {
     init() {
         phase = SeikatsuAPI.token == nil ? .noToken : .loading
         open = UserDefaults.standard.string(forKey: Self.openKey).flatMap(LifeApp.init)
+        if phase == .loading, let cache = LifeCache.load(), cache.today != nil {
+            today = cache.today
+            plan = cache.plan
+            focus = cache.focus
+            kyuu = cache.kyuu
+            habits = cache.habits
+            section = Seikatsu.defaultSection(focus)
+            phase = .ready
+        }
+    }
+
+    private func keep() {
+        LifeCache(today: today, plan: plan, focus: focus, kyuu: kyuu, habits: habits).save()
     }
 
     /// The tab came into view.
@@ -501,6 +539,7 @@ final class Life {
                 }
                 readAt[part] = Date()
                 if part == "today" { phase = .ready }
+                keep()
             } catch SeikatsuAPI.Failure.unauthorized {
                 phase = .unauthorized
             } catch SeikatsuAPI.Failure.noToken {
