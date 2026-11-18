@@ -67,6 +67,7 @@ struct NotchView: View {
                 let fadingActivity = mode == .compact && new.width < old.width && new.height <= old.height
                 // A notice drops out of the camera with a bounce; everything else keeps the calm spring.
                 let dropping = mode == .notice && old.height <= model.notch.height + 1 && new.height > old.height
+                    || mode == .open && new.width == old.width && new.height - old.height == Layout.panelNotice
                 withAnimation((dropping ? Self.drop : Self.spring).delay(fadingActivity ? 0.24 : 0)) {
                     shown = new
                     radius = targetRadius
@@ -191,6 +192,13 @@ struct OpenPanel: View {
                            label: "Pin open", isOn: model.state.isPinned) { model.send(.togglePin) }
             }
             .frame(height: model.notch.height)
+
+            if let notice = model.state.panelNotice {
+                PanelNotice(notice: notice, hovering: model.state.isHoveringNotice, clock: model.noticeClock,
+                            hover: { model.send(.hoverNotice($0)) }) { model.act(notice, $0) }
+                    .id(notice.id)
+                    .transition(.panelNotice)
+            }
 
             TabPane(model: model)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
