@@ -42,6 +42,9 @@ struct NotchView: View {
 
     static let spring = Animation.spring(response: 0.48, dampingFraction: 0.82)
     static let drop = Animation.spring(response: 0.55, dampingFraction: 0.66)
+    /// Room for a notice opening or closing in the panel: no bounce, so the body and the content
+    /// under it move as one piece.
+    static let settle = Animation.spring(response: 0.42, dampingFraction: 1)
 
     var body: some View {
         let mode = model.state.mode
@@ -67,8 +70,9 @@ struct NotchView: View {
                 let fadingActivity = mode == .compact && new.width < old.width && new.height <= old.height
                 // A notice drops out of the camera with a bounce; everything else keeps the calm spring.
                 let dropping = mode == .notice && old.height <= model.notch.height + 1 && new.height > old.height
-                    || mode == .open && new.width == old.width && new.height - old.height == Layout.panelNotice
-                withAnimation((dropping ? Self.drop : Self.spring).delay(fadingActivity ? 0.24 : 0)) {
+                let settling = mode == .open && new.width == old.width && abs(new.height - old.height) == Layout.panelNotice
+                let curve = settling ? Self.settle : dropping ? Self.drop : Self.spring
+                withAnimation(curve.delay(fadingActivity ? 0.24 : 0)) {
                     shown = new
                     radius = targetRadius
                 }
@@ -203,6 +207,8 @@ struct OpenPanel: View {
             TabPane(model: model)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        // The content follows the body's curve, so the two never drift apart.
+        .animation(NotchView.settle, value: model.state.panelNotice != nil)
         .padding(.horizontal, 16)
         .padding(.bottom, 16)
         .contextMenu {

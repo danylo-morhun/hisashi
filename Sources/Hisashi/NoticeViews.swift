@@ -433,13 +433,14 @@ struct PanelNotice: View {
 }
 
 extension AnyTransition {
-    /// Drops out of the camera with the panel's growth; leaves the same way, back up into it.
+    /// Comes up once the panel has made room for it; goes before the room closes.
+    /// The movement belongs to the panel, the row only appears and fades.
     static var panelNotice: AnyTransition {
         .asymmetric(
-            insertion: .modifier(active: Shift(active: true, y: -18, scale: 0.92), identity: Shift(active: false, y: -18, scale: 0.92))
-                .animation(.spring(response: 0.55, dampingFraction: 0.72).delay(0.06)),
-            removal: .modifier(active: Shift(active: true, y: -18, scale: 0.92), identity: Shift(active: false, y: -18, scale: 0.92))
-                .animation(.easeIn(duration: 0.24))
+            insertion: .modifier(active: Shift(active: true, y: -4, scale: 0.99), identity: Shift(active: false, y: -4, scale: 0.99))
+                .animation(.easeOut(duration: 0.28).delay(0.16)),
+            removal: .modifier(active: Shift(active: true, y: -4, scale: 0.99), identity: Shift(active: false, y: -4, scale: 0.99))
+                .animation(.easeIn(duration: 0.12))
         )
     }
 }
