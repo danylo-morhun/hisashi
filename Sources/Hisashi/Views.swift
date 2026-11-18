@@ -258,27 +258,12 @@ struct TabPane: View {
                 StatusPane(agents: model.state.agents)
             case .shelf:
                 ShelfPane()
-            default: Placeholder(tab: model.state.tab)
+            case .life:
+                LifePane()
             }
         }
         .id(model.state.tab)
         .transition(.opacity)
-    }
-}
-
-struct Placeholder: View {
-    let tab: Tab
-
-    var body: some View {
-        RoundedRectangle(cornerRadius: 14)
-            .fill(Theme.surface)
-            .overlay {
-                VStack(spacing: 6) {
-                    Image(systemName: tab.symbol).font(.system(size: 20)).foregroundStyle(Theme.muted)
-                    Text(tab.title).font(.system(size: 15, weight: .semibold))
-                    Text("Coming next").font(.system(size: 12)).foregroundStyle(Theme.muted)
-                }
-            }
     }
 }
 
