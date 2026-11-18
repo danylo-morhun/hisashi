@@ -252,9 +252,10 @@ enum Seikatsu {
         return (sections.first { !($0.cards ?? []).isEmpty } ?? sections.first)?.section
     }
 
-    /// When a card is due, short: 20:00, today, Thu, 2 Dec.
-    static func when(_ card: SeiryuFocus.Card, today: String?) -> String {
-        if card.due == today { return card.dueTime ?? "today" }
+    /// When a card is due, short: 20:00, today, Thu, 2 Dec. Quiet leaves "today" out,
+    /// for a list that is already today's.
+    static func when(_ card: SeiryuFocus.Card, today: String?, quiet: Bool = false) -> String {
+        if card.due == today { return card.dueTime ?? (quiet ? "" : "today") }
         guard let due = card.due, let date = day(due) else { return card.dueTime ?? "" }
         let days = today.flatMap(day).map { Calendar.current.dateComponents([.day], from: $0, to: date).day ?? 99 } ?? 99
         if days < 0 { return date.formatted(.dateTime.day().month(.abbreviated)) }
