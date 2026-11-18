@@ -22,6 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let levels = AudioLevels()
     private let picks = MainActor.assumeIsolated { Picks() }
     private let shelf = MainActor.assumeIsolated { Shelf() }
+    private let life = MainActor.assumeIsolated { Life() }
     private lazy var audio = AudioTap(levels: levels)
     private var keys: KeyTap?
     private let banners = BannerWatch()
@@ -225,7 +226,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                            width: size.width, height: size.height)
         panel?.close()
         let panel = NotchPanel(frame: frame)
-        let host = NSHostingView(rootView: NotchView(model: model).environment(levels).environment(picks).environment(shelf))
+        let host = NSHostingView(rootView: NotchView(model: model).environment(levels).environment(picks).environment(shelf).environment(life))
         host.sizingOptions = []
         host.frame = CGRect(origin: .zero, size: size)
         host.autoresizingMask = [.width, .height]
